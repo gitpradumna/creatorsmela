@@ -1,5 +1,5 @@
-import { CollabDashboard } from "@/components/CollabDashboard";
+import { LandingHomepage } from "@/components/LandingHomepage";
 
 export default function HomePage() {
-  return <CollabDashboard />;
+  return <LandingHomepage />;
 }

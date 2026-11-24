@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertCircle, CheckCircle2, Zap } from "lucide-react";
 import { ApiExplorerView } from "@/components/ApiExplorerView";
 import { AutomationHubView } from "@/components/AutomationHubView";
@@ -16,6 +16,7 @@ import {
 } from "@/components/Modals";
 import { Navbar, type ActiveTab } from "@/components/Navbar";
 import { calculateSplit } from "@/lib/format";
+import { useThemeMode } from "@/lib/theme";
 import type {
   AutomationConfigDTO,
   AutomationLogDTO,
@@ -32,35 +33,6 @@ interface ToastMessage {
   kind: "success" | "automation" | "error";
   title: string;
   detail?: string;
-}
-
-const themeListeners = new Set<() => void>();
-
-function applyThemeToDocument(nextTheme: "light" | "dark") {
-  const root = document.documentElement;
-  root.setAttribute("data-theme", nextTheme);
-  root.classList.toggle("dark", nextTheme === "dark");
-  root.style.colorScheme = nextTheme;
-}
-
-function subscribeTheme(onStoreChange: () => void) {
-  themeListeners.add(onStoreChange);
-  const onStorage = (e: StorageEvent) => {
-    if (e.key === "cm-theme") onStoreChange();
-  };
-  window.addEventListener("storage", onStorage);
-  return () => {
-    themeListeners.delete(onStoreChange);
-    window.removeEventListener("storage", onStorage);
-  };
-}
-
-function getThemeSnapshot(): "light" | "dark" {
-  return window.localStorage.getItem("cm-theme") === "dark" ? "dark" : "light";
-}
-
-function getServerThemeSnapshot(): "light" | "dark" {
-  return "light";
 }
 
 async function runGraphQLClient<T>(
@@ -108,18 +80,18 @@ const DASHBOARD_GRAPHQL_QUERY = `query GetDashboard {
   }
 }`;
 
-export function CollabDashboard() {
+export function CollabDashboard({
+  initialTab = "roster",
+}: {
+  initialTab?: ActiveTab;
+}) {
   const [data, setData] = useState<DashboardPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [activeTab, setActiveTab] = useState<ActiveTab>("roster");
+  const [activeTab, setActiveTab] = useState<ActiveTab>(initialTab);
   const [apiTransport, setApiTransport] = useState<"rest" | "graphql">("rest");
 
-  const theme = useSyncExternalStore<"light" | "dark">(
-    subscribeTheme,
-    getThemeSnapshot,
-    getServerThemeSnapshot
-  );
+  const { theme, toggleTheme: handleToggleTheme } = useThemeMode();
 
   // Filters
   const [statusFilter, setStatusFilter] = useState<"All" | DealStatus>("All");
@@ -156,19 +128,6 @@ export function CollabDashboard() {
       setToasts((prev) => prev.filter((t) => t.id !== id));
     }, 4500);
   }, []);
-
-  // Sync theme attribute and .dark class to <html>
-  useEffect(() => {
-    applyThemeToDocument(theme);
-  }, [theme]);
-
-  const handleToggleTheme = () => {
-    const current = getThemeSnapshot();
-    const next = current === "light" ? "dark" : "light";
-    window.localStorage.setItem("cm-theme", next);
-    applyThemeToDocument(next);
-    themeListeners.forEach((listener) => listener());
-  };
 
   const fetchDashboard = useCallback(async () => {
     try {
