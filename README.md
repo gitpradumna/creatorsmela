@@ -202,6 +202,10 @@ rest_endpoints:
   - method: DELETE
     path: /api/seed
     description: Delete all creators, brands, deals, and logs from the database
+
+  - method: POST
+    path: /api/chat
+    description: Manager AI assistant grounded in live Supabase data via Cloudflare Workers AI
 ```
 
 ---

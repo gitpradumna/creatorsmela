@@ -258,3 +258,7 @@ paths:
       summary: Reset and seed CreatorsMela sample creators, brands, and deals (6-month history)
     delete:
       summary: Delete all creators, brands, deals, and notification logs from the database
+
+  /api/chat:
+    post:
+      summary: Query live Supabase workspace data using Cloudflare Workers AI (with local fallback)

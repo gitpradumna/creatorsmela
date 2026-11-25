@@ -7,6 +7,7 @@ import { AutomationHubView } from "@/components/AutomationHubView";
 import { CreatorRosterView, type PendingDeleteRequest } from "@/components/CreatorRosterView";
 import { HeroOverview } from "@/components/HeroOverview";
 import { KanbanBoardView } from "@/components/KanbanBoardView";
+import { ManagerChatDrawer } from "@/components/ManagerChatDrawer";
 import {
   AddBrandModal,
   AddCreatorModal,
@@ -1029,7 +1030,7 @@ export function CollabDashboard({
       />
 
       {/* Calm Toast Stack */}
-      <div className="fixed bottom-4 right-4 z-50 flex w-full max-w-sm flex-col gap-2 px-4 sm:px-0 no-print">
+      <div className="fixed bottom-20 right-5 z-50 flex w-full max-w-sm flex-col gap-2 px-4 sm:px-0 no-print">
         {toasts.map((toast) => (
           <div
             key={toast.id}
@@ -1061,6 +1062,8 @@ export function CollabDashboard({
           </div>
         ))}
       </div>
+
+      <ManagerChatDrawer />
     </div>
   );
 }
