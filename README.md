@@ -1,230 +1,252 @@
-# CreatorsMela · Collab Tracker
+# CreatorsMela
 
-A full-stack talent management and brand collaboration tracker built for **CreatorsMela** (`Product, Tech & Automation` hiring assignment), backed by **Supabase PostgreSQL** with **REST APIs** and event-driven **Slack, Google Sheets, and Email** notifications.
+A production-grade creator-economy collaboration OS built for CreatorsMela talent managers.
+
+---
+
+## Live Demo & Verification
+
+| What | Link |
+|---|---|
+| 🎥 **Demo Video** | [View Demo Video →](https://drive.google.com/file/d/1SeCcnlqWePBEi8DMCokXiHEvCurtFOie/view?usp=sharing) |
+| 📊 **Google Sheet (Live Automation Logs)** | [View Sheet →](https://docs.google.com/spreadsheets/d/1so11C8ybpYCyrU61WUKxF8YmlGHv96lKnp4ZAMf3wQQ/edit?usp=sharing) |
+
+> [!NOTE]
+> **Slack:** The Slack workspace used for notifications is my personal workspace, so external reviewers won't be able to see the alerts directly. The demo video above shows a full walkthrough of a deal moving from Confirmed → Paid and the resulting Slack Block Kit alert firing in real time. The Google Sheet above is publicly viewable and shows every automation log row appended live by the system.
+
+--- It tracks brand deals from `Pending → Confirmed → Paid`, auto-fires multi-channel notifications at every operational handoff, and ships a live AI assistant (Melly) grounded in your Supabase database — all in a single Next.js app.
+
+---
+
+## What I Built
+
+| Module | Description |
+|---|---|
+| **Talent Roster** | Register creators with handle, niche, platform, follower count, and assigned manager |
+| **Brand Directory** | Register brands with sector, POC contact, and email; typeahead-linked to deal forms |
+| **Deal Tracker** | Full CRUD on collaborations with status lifecycle (`Pending → Confirmed → Paid`) |
+| **Paid Lock** | PostgreSQL trigger (`trg_deals_paid_lock`) + API guard + UI confirmation — once Paid, immutable forever |
+| **Kanban Pipeline** | Three-column board with live deal counts and total values per stage |
+| **Analytics** | 6-month SVG charts (revenue bars, stage donut, top-creator leaderboard, sector breakdown) — zero chart library |
+| **Notification Engine** | Slack Incoming Webhooks, Google Sheets Apps Script, Gmail/SMTP via nodemailer — user-toggled per trigger |
+| **Delete Approval** | Managers submit delete requests → admin queue approves — RBAC workflow demo |
+| **Demo Controls** | Generate (seed 6-month data) and Delete entire database — marked as demo-only |
+| **Melly AI** | Floating chatbot powered by Cloudflare Workers AI, grounded in live Supabase data |
+| **CSV & Payout Sheets** | Export filtered deals; printable payout brief with agency fee split + 10% TDS u/s 194J |
 
 ---
 
 ## Tech Stack
 
-- **Framework:** Next.js 16 (App Router, TypeScript)
-- **Styling:** Tailwind CSS v4 (Light & Dark mode) + Lucide Icons
-- **Database:** **Supabase PostgreSQL** (`creators`, `brands`, `deals`, `automation_configs`, `automation_logs` with relational foreign keys, check constraints, RLS policies, and a PostgreSQL trigger preventing status changes once a deal is `Paid`)
-- **REST APIs:** `/api/creators`, `/api/brands`, `/api/deals`, `/api/dashboard`, `/api/automations`, `/api/seed`, `/api/health` backed by Supabase PostgREST
-- **Notification Engine:** Server-side dispatcher supporting **Email** (direct Gmail/SMTP via `nodemailer`, Apps Script, or Resend), **Google Sheets** row appends (Google Apps Script Web App), and **Slack** Incoming Webhooks.
+| Category | Tool | Why |
+|---|---|---|
+| **Framework** | Next.js 16 (App Router, TypeScript) | File-based routing, server components, API routes in one repo |
+| **Database** | Supabase PostgreSQL (PostgREST REST) | Managed Postgres with RLS, FK constraints, triggers, and free tier |
+| **Styling** | Tailwind CSS v4 + Lucide Icons | Design-token CSS variables, dark mode without runtime overhead |
+| **AI Chatbot** | Cloudflare Workers AI — `@cf/meta/llama-3.3-70b-instruct-fp8-fast` | Free tier, 583ms p50 latency, grounded in live DB context injected as system prompt |
+| **Charts** | Custom SVG in React (`AnalyticsView.tsx`) | Zero bundle overhead, full dark-mode token control, no library lock-in |
+| **Email** | nodemailer (Gmail SMTP) + Resend fallback | Direct SMTP for reliability; Resend as transactional fallback |
+| **Slack** | Incoming Webhooks + Block Kit | Structured alerts for `#deals-ops` channel with deal metadata |
+| **Google Sheets** | Apps Script Web App (HTTP POST webhook) | Finance-team reconciliation rows auto-appended on Confirmed/Paid |
+| **Paid Lock** | PostgreSQL trigger `trg_deals_paid_lock` | DB-level enforcement survives any API bypass attempt |
 
 ---
 
-## Product Features
+## Automation Design
 
-1. **Homepage & One-Click Demo Login (`/`)**
-   - Clean landing page introducing the CreatorsMela Collab Tracker with a top **Demo Login** button that takes talent managers straight to `/dashboard`.
+### Why `Pending → Confirmed` and `Confirmed → Paid` (not every change)
 
-2. **Creator & Brand Directories + Deal Tracker (`/dashboard` → `Creators & Deals`)**
-   - **Deals by Creator:** View creators alongside their brand collaborations, filter by Status (`All`, `Pending`, `Confirmed`, `Paid`), Creator, or keyword search.
-   - **All Creators Directory:** Dedicated list of every registered creator (`Name`, `Handle`, `Niche`, `Followers`, `Platform`, `Manager`, `Total Pipeline`).
-   - **Registered Brands Directory:** Register brands with sector, POC, email, and website; typing a brand name in the **Add Brand Deal** form displays matching registered brands live below the input.
-   - **Immutable `Paid` Status Lock:** Choosing `Paid` opens a confirmation popup warning that `Paid` is permanent; once marked `Paid`, status changes are blocked in the UI, REST/GraphQL API (`HTTP 409`), and PostgreSQL trigger (`prevent_paid_deal_status_change`).
+Deals sit in `Pending` for days or weeks during rate negotiation. Firing notifications on every minor edit creates noise that trains the team to ignore alerts. Instead, **two transitions represent irreversible operational handoffs**:
 
-3. **Interactive Kanban Pipeline (`Pipeline`)**
-   - Three-stage board (`Pending` → `Confirmed` → `Paid`) with column deal totals and automatic notifications.
+1. **`Pending → Confirmed`** — Commercials are locked. Talent ops needs to brief the creator, production locks shoot dates, finance prepares the brand invoice. This is the signal every downstream person waits for.
+2. **`Confirmed → Paid`** — Brand payment is received and settled. `Paid` becomes permanent (UI, API, and PostgreSQL trigger all enforce this). Creator remittance must happen promptly — the notification is the payout trigger.
 
-4. **Analytics (`Analytics`)**
-   - Real-data charts for monthly pipeline & payout trends, stage breakdown, top creators, brand partners, industry sectors, and commission/TDS splits.
+### Why Multiple Notification Channels (Slack + Sheets + Email)?
 
-5. **Notifications (`Notifications`)**
-   - Configure triggers (`Confirmed`, `Paid`), select channels (`Email`, `Google Sheet`, `Slack`), customize destination fields, and send test notifications.
+A creator economy agency is a cross-functional team, not a single-tool team:
 
-6. **Printable Deal Payout Sheet & CSV Export**
-   - Export filtered deals to CSV or open a printable **Deal Payout Sheet** showing Gross Value, Agency Fee (%), Net Creator Payout, and estimated 10% TDS u/s 194J.
+| Channel | Who uses it | Why |
+|---|---|---|
+| **Slack** | Talent ops, production | Real-time Block Kit alerts in `#deals-ops`; actionable, seen immediately |
+| **Google Sheets** | Finance, accounts | Each `Confirmed`/`Paid` row auto-appended for reconciliation and TDS tracking |
+| **Email** | Managers, async stakeholders | Paper trail; works even if someone isn't on Slack |
+
+I gave the option for the manager to customise the notification platform he wishes to use, because different people would love to use different options and depending on their choice, they can customise it.
+This make sure that we reduce the amount of interruptions and focus time of the manager, as for someone, an email notification might distract them to other works and pull them out of their focus time. In such cases, they can opt for Slack notifications.
+
+### Production Pattern Used Here
+
+```
+Deal status change → /api/deals PATCH → automation dispatcher
+  ├── Slack: Block Kit payload → Incoming Webhook URL
+  ├── Sheets: JSON row → Apps Script Web App POST
+  └── Email: nodemailer SMTP or Resend → GMAIL_USER / RESEND_API_KEY
+```
 
 ---
 
-## Setup & Local Development
+## Assumptions
 
-### 1. Create Supabase Project & Run Schema
+| Assumption | Rationale |
+|---|---|
+| **Single-workspace, single-agency model** | One `automation_configs` row drives all triggers; a multi-agency product would add `workspace_id` FK |
+| **Paid status is permanent** | Mirrors legal/financial settlement finality in India — once a brand pays, the invoice is closed |
+| **TDS fixed at 10% u/s 194J** | Standard deduction rate for content creators (professional/technical services) in India's creator economy |
+| **Manager delete requires approval** | Prevents a disgruntled employee from wiping records on their last day; admin reviews queue before executing |
+| **Demo Controls are admin-only** | Generate/Delete Database actions are explicitly scoped to a "Demo — For Testing Only" section — a production deployment would remove them or gate behind `DEMO_MODE=true` env flag |
+| **No auth in demo** | One-click Demo Login sets `localStorage` session. A production deployment would add Supabase Auth or NextAuth with role-based access (manager vs admin) |
+| **Cloudflare Workers AI free tier** | Melly uses `@cf/meta/llama-3.3-70b-instruct-fp8-fast` — benchmarked at 583ms vs 1346ms for the 8B model; falls back to `llama-3.1-8b-instruct-fast` if quota is exhausted |
 
-1. Create a project at [supabase.com](https://supabase.com).
-2. Open **SQL Editor** in your Supabase dashboard and run [`supabase/schema.sql`](./supabase/schema.sql).
-   This creates `creators`, `brands`, `deals`, `automation_configs`, and `automation_logs`, along with `updated_at` triggers, RLS policies, and the `Paid` immutability trigger.
+---
 
-### 2. Configure Environment Variables
+## What I'd Add in Production (v2 Roadmap)
 
-Copy `.env.example` to `.env.local` and add your Supabase credentials:
+- **Contract & SOW Generation** — DocuSign / PandaDoc auto-sent on `Confirmed`
+- **WhatsApp Business API** — Creator delivery reminders at T-48h and T-2h before go-live
+- **RazorpayX Automated Payouts** — Queue net creator payout (Gross − Agency Fee − 10% TDS) on `Paid`
+- **Post-Campaign Analytics** — YouTube Data API + Instagram Graph API view ingestion at +24h, +7d, +30d after publish
+- **Supabase Auth + RBAC** — Manager vs Admin roles with row-level security per `workspace_id`
+- **Multi-workspace / Multi-agency** — Tenant isolation for agencies managing sub-teams
+- **Melly v2** — Retrieval-augmented generation (RAG) over deal history + creator contracts
+
+---
+
+## Setup & Running Locally
+
+### 1 · Create Supabase Project & Run Schema
+
+1. Create a project at [supabase.com](https://supabase.com)
+2. Open **SQL Editor** → paste and run [`supabase/schema.sql`](./supabase/schema.sql)
+   - Creates: `creators`, `brands`, `deals`, `automation_configs`, `automation_logs`
+   - Installs: `updated_at` auto-triggers, RLS policies, and `trg_deals_paid_lock`
+
+### 2 · Configure Environment Variables
 
 ```bash
 cp .env.example .env.local
 ```
 
-```env
-NEXT_PUBLIC_SUPABASE_URL=https://your-project-ref.supabase.co
-NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_your-key
-```
+Then fill in your credentials (see the **Environment Variables** section below).
 
-*(Optional)* Add live notification targets in `.env.local` or in the **Notifications** tab:
-- `SLACK_WEBHOOK_URL` — Incoming Slack webhook URL
-- `GOOGLE_SHEETS_WEBHOOK_URL` — Google Apps Script Web App URL to append Google Sheet rows
-- `GMAIL_USER` + `GMAIL_APP_PASSWORD` (or `EMAIL_WEBHOOK_URL` / `RESEND_API_KEY`) — Live email delivery
-
-### 3. Install & Run
+### 3 · Install & Run
 
 ```bash
 pnpm install
 pnpm dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000), click **Demo Login**, and click **Sample Data** inside `/dashboard` to populate Supabase PostgreSQL with sample CreatorsMela creators, brands, and deals.
+Open [http://localhost:3000](http://localhost:3000) → click **Demo Login** → click **Generate Database** to seed 6 months of realistic deals.
 
 ---
 
-## API Endpoints & Responses (YAML)
+## Environment Variables
 
-Full OpenAPI specification: [`docs/api-spec.yaml`](./docs/api-spec.yaml)
+| Variable | Required | Purpose |
+|---|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | ✅ Required | Your Supabase project URL |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | ✅ Required | Supabase publishable API key |
+| `SLACK_WEBHOOK_URL` | Optional | Slack Incoming Webhook URL for deal alerts |
+| `GOOGLE_SHEETS_WEBHOOK_URL` | Optional | Google Apps Script Web App URL for sheet row appends |
+| `GMAIL_USER` | Optional | Gmail address for SMTP email dispatch |
+| `GMAIL_APP_PASSWORD` | Optional | Gmail App Password (not your account password) |
+| `EMAIL_WEBHOOK_URL` | Optional | Alternative HTTP webhook for email (used if Gmail not set) |
+| `RESEND_API_KEY` | Optional | Resend transactional email API key (fallback) |
+| `CLOUDFLARE_ACCOUNT_ID` | Optional | Cloudflare account ID — powers Melly AI |
+| `CLOUDFLARE_API_TOKEN` | Optional | Cloudflare API token with Workers AI read permission |
+| `CLOUDFLARE_AI_MODEL` | Optional | Override model (default: `@cf/meta/llama-3.3-70b-instruct-fp8-fast`) |
 
-### REST Endpoints
+> [!NOTE]
+> Only the two Supabase variables are required to run the app. All notification channels are optional and can be toggled or configured from the **Notifications** tab inside the dashboard.
 
-```yaml
-rest_endpoints:
-  - method: GET
-    path: /api/health
-    description: Verifies Supabase PostgreSQL connectivity and row counts
-    response:
-      status: 200
-      body:
-        ok: true
-        storageMode: supabase-postgres
-        creatorsCount: 6
-        dealsCount: 11
+---
 
-  - method: GET
-    path: /api/dashboard
-    description: Returns creators with nested deals, registered brands, KPIs, and automation logs
-    response:
-      status: 200
-      body:
-        storageMode: supabase-postgres
-        metrics:
-          totalPipelineValue: 3680000
-          pendingValue: 1035000
-          confirmedValue: 1165000
-          paidValue: 1480000
-          conversionRate: 73
-          automationsFiredCount: 8
+## REST API Endpoints
 
-  - method: POST
-    path: /api/creators
-    description: Register a new creator
-    request:
-      name: Tech Burner
-      niche: Tech & Gadgets
-      followerCount: 12000000
-      platform: YouTube
-    response:
-      status: 201
-      body:
-        creator:
-          id: "2940f970-7e41-4c28-9ea1-2a3d9f1a0981"
-          name: Tech Burner
-          handle: "@techburner"
-          niche: Tech & Gadgets
-          followerCount: 12000000
+All endpoints are under `/api/` and backed by Supabase PostgREST. No GraphQL.
 
-  - method: POST
-    path: /api/brands
-    description: Register a brand for typeahead selection in deal forms
-    request:
-      name: District by Zomato
-      sector: LIVE EVENTS
-      contactName: Zoya Khan
-      contactEmail: partners@district.in
-    response:
-      status: 201
-      body:
-        brand:
-          id: "5c14f0df-2c44-4f10-96aa-3b88823c2d91"
-          name: District by Zomato
-          sector: LIVE EVENTS
+### Core Resources
 
-  - method: POST
-    path: /api/deals
-    description: Create a brand deal (auto-fires automations if initial status is Confirmed or Paid)
-    request:
-      creatorId: "7b7c65a4-47f4-4db3-b91e-1d8a55d7d810"
-      brandName: Lenskart
-      dealValue: 480000
-      status: Confirmed
-      deliverables: "1 YT Integration + 2 IG Reels"
-    response:
-      status: 201
-      body:
-        deal:
-          id: "d1e3b4a0-8f22-41af-98d4-99f847021c01"
-          brandName: Lenskart
-          status: Confirmed
-          dealValue: 480000
-        automationsTriggered:
-          - channel: slack
-            mode: simulated
-            httpStatus: 200
-          - channel: sheets
-            mode: live
-            httpStatus: 200
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/creators` | List all creators |
+| `POST` | `/api/creators` | Register a new creator |
+| `PATCH` | `/api/creators/[id]` | Update creator details |
+| `DELETE` | `/api/creators/[id]` | Delete a creator (manager needs approval) |
+| `GET` | `/api/brands` | List all registered brands |
+| `POST` | `/api/brands` | Register a new brand |
+| `PATCH` | `/api/brands/[id]` | Update brand details |
+| `DELETE` | `/api/brands/[id]` | Delete a brand |
+| `GET` | `/api/deals` | List all deals |
+| `POST` | `/api/deals` | Create a deal (auto-fires automations on Confirmed/Paid) |
+| `PATCH` | `/api/deals/[id]` | Update deal — returns `409` if deal is Paid |
+| `DELETE` | `/api/deals/[id]` | Delete a deal (manager needs approval) |
 
-  - method: PATCH
-    path: /api/deals/{id}
-    description: Update deal status; triggers notifications on Confirmed/Paid; rejects changes to Paid deals
-    request:
-      status: Paid
-    responses:
-      200:
-        deal:
-          id: "d1e3b4a0-8f22-41af-98d4-99f847021c01"
-          status: Paid
-        previousStatus: Confirmed
-        automationsTriggered:
-          - channel: slack
-            httpStatus: 200
-            summary: "Slack Block Kit alert formatted for #deals-ops"
-      409:
-        error: "Deals marked as Paid cannot change status."
+### Aggregated & System
 
-  - method: GET / PUT
-    path: /api/automations
-    description: Read or update notification channel toggles and destination fields
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/dashboard` | Creators + brands + deals + KPI metrics + automation logs in one payload |
+| `GET` | `/api/health` | Supabase connectivity check + row counts |
+| `GET` | `/api/automations` | Read current automation config (channels, triggers, destinations) |
+| `PUT` | `/api/automations` | Update automation config |
+| `POST` | `/api/automations/test` | Fire a test notification across all enabled channels |
+| `POST` | `/api/seed` | Reset and seed 6-month realistic data |
+| `DELETE` | `/api/seed` | Delete all data from the database |
+| `POST` | `/api/chat` | Melly AI — answers questions grounded in live Supabase data |
 
-  - method: POST
-    path: /api/automations/test
-    description: Dispatch a manual test notification across enabled channels
+**Example — `PATCH /api/deals/[id]` with Paid deal:**
+```json
+// Response 409
+{ "error": "Deals marked as Paid cannot change status." }
+```
 
-  - method: POST
-    path: /api/seed
-    description: Reset and seed sample CreatorsMela creators, brands, and 6-month deals
-
-  - method: DELETE
-    path: /api/seed
-    description: Delete all creators, brands, deals, and logs from the database
-
-  - method: POST
-    path: /api/chat
-    description: Manager AI assistant grounded in live Supabase data via Cloudflare Workers AI
+**Example — `POST /api/deals` triggers:**
+```json
+// Response 201
+{
+  "deal": { "id": "...", "brandName": "Lenskart", "status": "Confirmed", "dealValue": 480000 },
+  "automationsTriggered": [
+    { "channel": "slack", "httpStatus": 200 },
+    { "channel": "sheets", "httpStatus": 200 }
+  ]
+}
 ```
 
 ---
 
-## Notification Design: Thinking & Architecture
+## Project Structure
 
-### Why I Chose the `Pending → Confirmed` & `Confirmed → Paid` Triggers
-
-In a creator economy agency, deals stay in `Pending` during rate negotiation and scope alignment. Triggering notifications on every `Pending` edit causes noise. Instead, **two state transitions represent irreversible operational handoffs**:
-
-1. **`Pending → Confirmed` (Production & Brand Invoice Handoff):**
-   - Commercials are locked. Talent ops needs to brief the creator, production locks shoot dates, and finance prepares the brand invoice.
-   - Fires a Slack Block Kit alert, appends a Google Sheet row, and sends a manager email notification.
-2. **`Confirmed → Paid` (Settlement & Creator Payout Handoff):**
-   - Brand payment is settled. Status becomes permanent (`Paid` cannot be modified in the UI, REST API, or Postgres trigger `trg_deals_paid_lock`) and payout notifications trigger so creator remittance happens promptly.
-
-### What I Would Automate Next in a Real Internal Tool (IRIS)
-
-1. **Automated Contract & SOW Generation:** On `Pending → Confirmed`, generate and send a creator SOW via DocuSign / PandaDoc.
-2. **Deliverable SLA & Go-Live Reminders:** Schedule T-48h draft and T-2h publish reminders via WhatsApp Business API / Slack.
-3. **Accounting & TDS 194J Reconciliation:** Auto-draft GST invoices in Zoho Books on `Confirmed` and queue net creator payouts (minus agency fee and 10% TDS) via RazorpayX on `Paid`.
-4. **Post-Campaign Analytics Ingestion:** Poll YouTube Data API / Instagram Graph API at +24h, +7d, and +30d after go-live to feed live view counts back into IRIS.
+```
+creatorsmela/
+├── src/
+│   ├── app/
+│   │   ├── api/
+│   │   │   ├── chat/route.ts          # Melly AI — Cloudflare Workers AI
+│   │   │   ├── creators/route.ts      # GET, POST creators
+│   │   │   ├── creators/[id]/route.ts # PATCH, DELETE creator
+│   │   │   ├── brands/route.ts        # GET, POST brands
+│   │   │   ├── brands/[id]/route.ts   # PATCH, DELETE brand
+│   │   │   ├── deals/route.ts         # GET, POST deals + auto-fire automations
+│   │   │   ├── deals/[id]/route.ts    # PATCH (Paid lock 409), DELETE
+│   │   │   ├── dashboard/route.ts     # Aggregated payload
+│   │   │   ├── automations/route.ts   # GET / PUT config
+│   │   │   ├── automations/test/      # POST test dispatch
+│   │   │   ├── seed/route.ts          # POST seed / DELETE clear
+│   │   │   └── health/route.ts        # GET health check
+│   │   └── dashboard/page.tsx         # App shell
+│   ├── components/
+│   │   ├── LandingHomepage.tsx        # Landing page
+│   │   ├── DashboardView.tsx          # Main dashboard orchestrator
+│   │   ├── AnalyticsView.tsx          # SVG charts (no library)
+│   │   ├── KanbanPipelineView.tsx     # Kanban board
+│   │   ├── NotificationsView.tsx      # Notification config UI
+│   │   └── ManagerChatDrawer.tsx      # Melly floating chatbot
+│   └── lib/
+│       ├── store.ts                   # All DB operations (Supabase client)
+│       ├── seed-data.ts               # 6-month realistic seed builder
+│       ├── automation-dispatcher.ts   # Multi-channel notification dispatcher
+│       └── theme.ts                   # Light/dark theme hook
+├── supabase/
+│   └── schema.sql                     # Full schema with triggers, RLS, constraints
+└── .env.example                       # All env variables documented
+```
