@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { Home, Moon, Plus, Sun } from "lucide-react";
+import { Moon, Plus, Sun } from "lucide-react";
 
-export type ActiveTab = "roster" | "pipeline" | "notifications";
+export type ActiveTab = "roster" | "pipeline" | "analytics" | "notifications";
 
 interface NavbarProps {
   activeTab: ActiveTab;
@@ -18,6 +18,7 @@ interface NavbarProps {
 const NAV_ITEMS: { id: ActiveTab; label: string }[] = [
   { id: "roster", label: "Creators & Deals" },
   { id: "pipeline", label: "Pipeline" },
+  { id: "analytics", label: "Analytics" },
   { id: "notifications", label: "Notifications" },
 ];
 
@@ -34,14 +35,15 @@ export function Navbar({
     <header className="sticky top-0 z-40 border-b border-[var(--border)] bg-[var(--bg)]/90 backdrop-blur-md no-print">
       <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3.5 sm:px-6">
         {/* Two-tone Wordmark linking back to Homepage */}
-        <Link href="/" className="flex flex-col transition-opacity hover:opacity-85">
+        <Link
+          href="/"
+          title="Back to Home"
+          className="inline-flex items-center transition-opacity hover:opacity-85"
+        >
           <div className="text-xl font-bold tracking-tight">
             <span className="text-[var(--text)]">creators</span>
             <span style={{ color: "var(--accent)" }}>mela</span>
           </div>
-          <span className="text-[11px] font-medium text-[var(--text-muted)]">
-            Demo Manager · Back to Home
-          </span>
         </Link>
 
         {/* Clean Pill Navigation */}
@@ -70,15 +72,6 @@ export function Navbar({
 
         {/* Circular Theme Toggle + Actions matching Screenshot Top Right */}
         <div className="order-2 flex items-center gap-2 sm:order-3">
-          <Link
-            href="/"
-            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[var(--border-strong)] bg-[var(--surface-chip)] text-[var(--text)] transition-colors hover:bg-[var(--surface-hover)]"
-            title="Back to Homepage"
-            aria-label="Back to Homepage"
-          >
-            <Home className="h-4 w-4 text-[var(--text-muted)]" />
-          </Link>
-
           <button
             type="button"
             onClick={onToggleTheme}

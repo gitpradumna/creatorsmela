@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle, CheckCircle2, Zap } from "lucide-react";
+import { AnalyticsView } from "@/components/AnalyticsView";
 import { AutomationHubView } from "@/components/AutomationHubView";
 import { CreatorRosterView } from "@/components/CreatorRosterView";
 import { HeroOverview } from "@/components/HeroOverview";
@@ -609,7 +610,7 @@ export function CollabDashboard({
           </div>
         ) : (
           <>
-            {activeTab !== "notifications" && (
+            {(activeTab === "roster" || activeTab === "pipeline") && (
               <HeroOverview
                 metrics={data.metrics}
                 brandsCount={data.brands.length}
@@ -670,6 +671,15 @@ export function CollabDashboard({
                   setBriefTarget({ deal, creator })
                 }
                 updatingDealId={updatingDealId}
+              />
+            )}
+
+            {activeTab === "analytics" && (
+              <AnalyticsView
+                creators={data.creators}
+                brands={data.brands}
+                deals={data.deals}
+                metrics={data.metrics}
               />
             )}
 

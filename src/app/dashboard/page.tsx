@@ -5,7 +5,12 @@ import { useSearchParams } from "next/navigation";
 import { CollabDashboard } from "@/components/CollabDashboard";
 import type { ActiveTab } from "@/components/Navbar";
 
-const VALID_TABS: ActiveTab[] = ["roster", "pipeline", "notifications"];
+const VALID_TABS: ActiveTab[] = [
+  "roster",
+  "pipeline",
+  "analytics",
+  "notifications",
+];
 
 function DashboardWithParams() {
   const params = useSearchParams();

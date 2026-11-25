@@ -79,6 +79,11 @@ html.dark {
   --font-mono: var(--font-mono);
 }
 
+html {
+  overflow-y: scroll;
+  scrollbar-gutter: stable;
+}
+
 html,
 body {
   background-color: var(--bg);
