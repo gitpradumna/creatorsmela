@@ -4,15 +4,18 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle, CheckCircle2, Zap } from "lucide-react";
 import { AnalyticsView } from "@/components/AnalyticsView";
 import { AutomationHubView } from "@/components/AutomationHubView";
-import { CreatorRosterView } from "@/components/CreatorRosterView";
+import { CreatorRosterView, type PendingDeleteRequest } from "@/components/CreatorRosterView";
 import { HeroOverview } from "@/components/HeroOverview";
 import { KanbanBoardView } from "@/components/KanbanBoardView";
 import {
   AddBrandModal,
   AddCreatorModal,
   AddDealModal,
+  ConfirmClearDatabaseModal,
   ConfirmPaidModal,
   DealBriefModal,
+  RequestDeleteApprovalModal,
+  type DeleteApprovalTarget,
 } from "@/components/Modals";
 import { Navbar, type ActiveTab } from "@/components/Navbar";
 import { calculateSplit } from "@/lib/format";
@@ -57,6 +60,8 @@ export function CollabDashboard({
   // Modals & Busy States
   const [addCreatorOpen, setAddCreatorOpen] = useState(false);
   const [creatorDefaultName, setCreatorDefaultName] = useState("");
+  const [editCreatorTarget, setEditCreatorTarget] =
+    useState<CreatorDTO | null>(null);
   const [creatorModalStacked, setCreatorModalStacked] = useState(false);
   const creatorResolverRef = useRef<((creator: CreatorDTO | null) => void) | null>(
     null
@@ -64,12 +69,14 @@ export function CollabDashboard({
 
   const [addBrandOpen, setAddBrandOpen] = useState(false);
   const [brandDefaultName, setBrandDefaultName] = useState("");
+  const [editBrandTarget, setEditBrandTarget] = useState<BrandDTO | null>(null);
   const [brandModalStacked, setBrandModalStacked] = useState(false);
   const brandResolverRef = useRef<((brand: BrandDTO | null) => void) | null>(
     null
   );
 
   const [addDealOpen, setAddDealOpen] = useState(false);
+  const [editDealTarget, setEditDealTarget] = useState<DealDTO | null>(null);
   const [defaultCreatorForDeal, setDefaultCreatorForDeal] = useState("");
   const [defaultBrandForDeal, setDefaultBrandForDeal] = useState<{
     name: string;
@@ -86,6 +93,16 @@ export function CollabDashboard({
 
   const [updatingDealId, setUpdatingDealId] = useState<string | null>(null);
   const [isSeeding, setIsSeeding] = useState(false);
+  const [clearDbModalOpen, setClearDbModalOpen] = useState(false);
+  const [isClearingDatabase, setIsClearingDatabase] = useState(false);
+  const [deleteApprovalTarget, setDeleteApprovalTarget] =
+    useState<DeleteApprovalTarget | null>(null);
+  const [pendingDeleteRequests, setPendingDeleteRequests] = useState<
+    PendingDeleteRequest[]
+  >([]);
+  const [approvingRequestId, setApprovingRequestId] = useState<string | null>(
+    null
+  );
   const [isTestingAutomation, setIsTestingAutomation] = useState(false);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
@@ -182,10 +199,14 @@ export function CollabDashboard({
         error?: string;
       };
       if (!res.ok) throw new Error(result.error || "Failed to generate data");
+      setStatusFilter("All");
+      setCreatorFilter("All");
+      setSearchQuery("");
+      setPendingDeleteRequests([]);
       await fetchDashboard();
       pushToast({
         kind: "success",
-        title: "Fresh sample data generated",
+        title: "Fresh database generated (6-month history)",
         detail: `${result.creatorsCreated ?? 0} creators, ${result.brandsCreated ?? 0} brands, and ${result.dealsCreated ?? 0} deals created.`,
       });
     } catch (err) {
@@ -196,6 +217,34 @@ export function CollabDashboard({
       });
     } finally {
       setIsSeeding(false);
+    }
+  };
+
+  const handleClearDatabase = async () => {
+    setIsClearingDatabase(true);
+    try {
+      const res = await fetch("/api/seed", { method: "DELETE" });
+      const json = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(json.error || "Failed to delete database");
+      setStatusFilter("All");
+      setCreatorFilter("All");
+      setSearchQuery("");
+      setPendingDeleteRequests([]);
+      await fetchDashboard();
+      setClearDbModalOpen(false);
+      pushToast({
+        kind: "success",
+        title: "Database deleted",
+        detail: "All creators, brands, deals, and logs have been removed.",
+      });
+    } catch (err) {
+      pushToast({
+        kind: "error",
+        title: "Could not delete database",
+        detail: err instanceof Error ? err.message : "Unknown error",
+      });
+    } finally {
+      setIsClearingDatabase(false);
     }
   };
 
@@ -256,10 +305,67 @@ export function CollabDashboard({
     return created;
   };
 
+  const handleUpdateCreator = async (
+    id: string,
+    payload: {
+      name: string;
+      handle: string;
+      platform: PlatformType;
+      niche: string;
+      followerCount: number;
+      managerName: string;
+    }
+  ): Promise<CreatorDTO> => {
+    const res = await fetch(`/api/creators/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || "Failed to update creator");
+    const updated = json.creator as CreatorDTO;
+    await fetchDashboard();
+    pushToast({
+      kind: "success",
+      title: `Updated ${updated.name}`,
+      detail: payload.niche,
+    });
+    return updated;
+  };
+
+  const handleUpdateBrand = async (
+    id: string,
+    payload: {
+      name: string;
+      sector: string;
+      contactName: string;
+      contactEmail: string;
+      website: string;
+      notes: string;
+    }
+  ): Promise<BrandDTO> => {
+    const res = await fetch(`/api/brands/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || "Failed to update brand");
+    const updated = json.brand as BrandDTO;
+    await fetchDashboard();
+    pushToast({
+      kind: "success",
+      title: `Updated ${updated.name}`,
+      detail: updated.sector,
+    });
+    return updated;
+  };
+
   const closeAddCreatorModal = () => {
     creatorResolverRef.current?.(null);
     creatorResolverRef.current = null;
     setAddCreatorOpen(false);
+    setEditCreatorTarget(null);
     setCreatorModalStacked(false);
     setCreatorDefaultName("");
   };
@@ -268,6 +374,7 @@ export function CollabDashboard({
     brandResolverRef.current?.(null);
     brandResolverRef.current = null;
     setAddBrandOpen(false);
+    setEditBrandTarget(null);
     setBrandModalStacked(false);
     setBrandDefaultName("");
   };
@@ -275,6 +382,7 @@ export function CollabDashboard({
   const handleRequestRegisterCreator = (typedName: string) =>
     new Promise<CreatorDTO | null>((resolve) => {
       creatorResolverRef.current = resolve;
+      setEditCreatorTarget(null);
       setCreatorDefaultName(typedName);
       setCreatorModalStacked(true);
       setAddCreatorOpen(true);
@@ -283,24 +391,133 @@ export function CollabDashboard({
   const handleRequestRegisterBrand = (typedName: string) =>
     new Promise<BrandDTO | null>((resolve) => {
       brandResolverRef.current = resolve;
+      setEditBrandTarget(null);
       setBrandDefaultName(typedName);
       setBrandModalStacked(true);
       setAddBrandOpen(true);
     });
 
-  const handleDeleteBrand = async (brandId: string) => {
+  const requestDeleteDeal = (dealId: string) => {
+    const deal = data?.deals.find((d) => d.id === dealId);
+    if (!deal) return;
+    if (deal.status === "Paid") {
+      pushToast({
+        kind: "error",
+        title: "Paid deals cannot be deleted",
+      });
+      return;
+    }
+    setDeleteApprovalTarget({
+      entityType: "deal",
+      entityId: deal.id,
+      label: `${deal.creatorName || "Creator"} × ${deal.brandName}`,
+      detail: `Deal (${deal.status})`,
+    });
+  };
+
+  const requestDeleteCreator = (creatorId: string) => {
+    const creator = data?.creators.find((c) => c.id === creatorId);
+    if (!creator) return;
+    if (creator.deals.some((d) => d.status === "Paid")) {
+      pushToast({
+        kind: "error",
+        title: "Cannot delete creator with Paid deals",
+      });
+      return;
+    }
+    setDeleteApprovalTarget({
+      entityType: "creator",
+      entityId: creator.id,
+      label: creator.name,
+      detail: `Creator · ${creator.deals.length} deals`,
+    });
+  };
+
+  const requestDeleteBrand = (brandId: string) => {
+    const brand = data?.brands.find((b) => b.id === brandId);
+    if (!brand) return;
+    setDeleteApprovalTarget({
+      entityType: "brand",
+      entityId: brand.id,
+      label: brand.name,
+      detail: `Brand · ${brand.sector}`,
+    });
+  };
+
+  const handleSubmitDeleteRequest = (
+    target: DeleteApprovalTarget,
+    reason: string
+  ) => {
+    const alreadyPending = pendingDeleteRequests.some(
+      (r) => r.entityType === target.entityType && r.entityId === target.entityId
+    );
+    if (alreadyPending) {
+      setDeleteApprovalTarget(null);
+      pushToast({
+        kind: "error",
+        title: "Approval already pending",
+        detail: `${target.label} is already waiting for Admin review.`,
+      });
+      return;
+    }
+    setPendingDeleteRequests((prev) => [
+      {
+        id: Math.random().toString(36).slice(2),
+        ...target,
+        reason,
+        requestedBy: "Demo Manager",
+        requestedAt: new Date().toISOString(),
+      },
+      ...prev,
+    ]);
+    setDeleteApprovalTarget(null);
+    pushToast({
+      kind: "automation",
+      title: "Delete request submitted for Admin approval",
+      detail: `${target.label} will not be removed until approved.`,
+    });
+  };
+
+  const handleApproveDeleteRequest = async (requestId: string) => {
+    const req = pendingDeleteRequests.find((r) => r.id === requestId);
+    if (!req) return;
+    setApprovingRequestId(requestId);
     try {
-      const res = await fetch(`/api/brands/${brandId}`, { method: "DELETE" });
-      if (!res.ok) throw new Error("Failed to delete brand");
+      const endpoint =
+        req.entityType === "deal"
+          ? `/api/deals/${req.entityId}`
+          : req.entityType === "creator"
+            ? `/api/creators/${req.entityId}`
+            : `/api/brands/${req.entityId}`;
+      const res = await fetch(endpoint, { method: "DELETE" });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || "Failed to execute delete");
+      setPendingDeleteRequests((prev) => prev.filter((r) => r.id !== requestId));
       await fetchDashboard();
-      pushToast({ kind: "success", title: "Brand removed" });
+      pushToast({
+        kind: "success",
+        title: `Approved & deleted ${req.label}`,
+        detail: `Admin approved removal (${req.entityType}).`,
+      });
     } catch (err) {
       pushToast({
         kind: "error",
-        title: "Delete failed",
+        title: "Approval execution failed",
         detail: err instanceof Error ? err.message : "Unknown error",
       });
+    } finally {
+      setApprovingRequestId(null);
     }
+  };
+
+  const handleRejectDeleteRequest = (requestId: string) => {
+    const req = pendingDeleteRequests.find((r) => r.id === requestId);
+    setPendingDeleteRequests((prev) => prev.filter((r) => r.id !== requestId));
+    pushToast({
+      kind: "success",
+      title: "Delete request rejected",
+      detail: req ? `${req.label} kept intact.` : undefined,
+    });
   };
 
   const handleCreateDeal = async (payload: {
@@ -349,6 +566,48 @@ export function CollabDashboard({
       pushToast({
         kind: "success",
         title: `Added ${payload.brandName} deal`,
+        detail: `Status: ${payload.status}`,
+      });
+    }
+  };
+
+  const handleUpdateDeal = async (
+    id: string,
+    payload: {
+      creatorId: string;
+      brandId?: string;
+      brandName: string;
+      brandSector: string;
+      campaignTitle: string;
+      deliverables: string;
+      dealValue: number;
+      agencyFeePct: number;
+      status: DealStatus;
+      dueDate: string;
+      notes: string;
+    }
+  ) => {
+    const res = await fetch(`/api/deals/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || "Failed to update deal");
+
+    await fetchDashboard();
+
+    const triggered = (json.automationsTriggered || []) as AutomationLogDTO[];
+    if (triggered.length > 0) {
+      pushToast({
+        kind: "automation",
+        title: `Updated ${payload.brandName} · Notifications Sent`,
+        detail: triggered.map((t) => t.channel).join(", "),
+      });
+    } else {
+      pushToast({
+        kind: "success",
+        title: `Updated ${payload.brandName} deal`,
         detail: `Status: ${payload.status}`,
       });
     }
@@ -413,39 +672,6 @@ export function CollabDashboard({
     }
 
     await commitDealStatusUpdate(dealId, nextStatus);
-  };
-
-  const handleDeleteDeal = async (dealId: string) => {
-    setUpdatingDealId(dealId);
-    try {
-      const res = await fetch(`/api/deals/${dealId}`, { method: "DELETE" });
-      if (!res.ok) throw new Error("Failed to delete deal");
-      await fetchDashboard();
-      pushToast({ kind: "success", title: "Deal removed" });
-    } catch (err) {
-      pushToast({
-        kind: "error",
-        title: "Delete failed",
-        detail: err instanceof Error ? err.message : "Unknown error",
-      });
-    } finally {
-      setUpdatingDealId(null);
-    }
-  };
-
-  const handleDeleteCreator = async (creatorId: string) => {
-    try {
-      const res = await fetch(`/api/creators/${creatorId}`, { method: "DELETE" });
-      if (!res.ok) throw new Error("Failed to delete creator");
-      await fetchDashboard();
-      pushToast({ kind: "success", title: "Creator removed" });
-    } catch (err) {
-      pushToast({
-        kind: "error",
-        title: "Delete failed",
-        detail: err instanceof Error ? err.message : "Unknown error",
-      });
-    }
   };
 
   const handleSaveAutomationConfig = async (
@@ -568,6 +794,7 @@ export function CollabDashboard({
           setAddBrandOpen(true);
         }}
         onOpenAddDeal={() => {
+          setEditDealTarget(null);
           setDefaultCreatorForDeal("");
           setDefaultBrandForDeal({ name: "", id: "" });
           setAddDealOpen(true);
@@ -629,15 +856,42 @@ export function CollabDashboard({
                 searchQuery={searchQuery}
                 onSearchQueryChange={setSearchQuery}
                 onUpdateDealStatus={handleUpdateDealStatus}
-                onDeleteDeal={handleDeleteDeal}
-                onDeleteCreator={handleDeleteCreator}
-                onDeleteBrand={handleDeleteBrand}
+                onDeleteDeal={requestDeleteDeal}
+                onDeleteCreator={requestDeleteCreator}
+                onDeleteBrand={requestDeleteBrand}
+                pendingDeleteRequests={pendingDeleteRequests}
+                approvingRequestId={approvingRequestId}
+                onApproveDeleteRequest={handleApproveDeleteRequest}
+                onRejectDeleteRequest={handleRejectDeleteRequest}
+                onEditDeal={(deal) => {
+                  setEditDealTarget(deal);
+                  setDefaultCreatorForDeal(deal.creatorId);
+                  setDefaultBrandForDeal({
+                    name: deal.brandName,
+                    id: deal.brandId || "",
+                  });
+                  setAddDealOpen(true);
+                }}
+                onEditCreator={(creator) => {
+                  setEditCreatorTarget(creator);
+                  setCreatorDefaultName("");
+                  setCreatorModalStacked(false);
+                  setAddCreatorOpen(true);
+                }}
+                onEditBrand={(brand) => {
+                  setEditBrandTarget(brand);
+                  setBrandDefaultName("");
+                  setBrandModalStacked(false);
+                  setAddBrandOpen(true);
+                }}
                 onOpenAddDealForCreator={(cid) => {
+                  setEditDealTarget(null);
                   setDefaultCreatorForDeal(cid);
                   setDefaultBrandForDeal({ name: "", id: "" });
                   setAddDealOpen(true);
                 }}
                 onOpenAddDealForBrand={(bName, bId) => {
+                  setEditDealTarget(null);
                   setDefaultCreatorForDeal("");
                   setDefaultBrandForDeal({ name: bName, id: bId });
                   setAddDealOpen(true);
@@ -657,7 +911,9 @@ export function CollabDashboard({
                 }
                 onExportCsv={handleExportCsv}
                 onSeedData={handleSeedData}
+                onRequestClearDatabase={() => setClearDbModalOpen(true)}
                 isSeeding={isSeeding}
+                isClearingDatabase={isClearingDatabase}
                 updatingDealId={updatingDealId}
               />
             )}
@@ -697,35 +953,44 @@ export function CollabDashboard({
       </main>
 
       <AddCreatorModal
-        key={`creator-${String(addCreatorOpen)}-${creatorDefaultName}`}
+        key={`creator-${String(addCreatorOpen)}-${editCreatorTarget?.id ?? creatorDefaultName}`}
         open={addCreatorOpen}
         defaultName={creatorDefaultName}
+        initialCreator={editCreatorTarget}
         stacked={creatorModalStacked}
         onClose={closeAddCreatorModal}
         onCreate={handleCreateCreator}
+        onUpdate={handleUpdateCreator}
       />
 
       <AddBrandModal
-        key={`brand-${String(addBrandOpen)}-${brandDefaultName}`}
+        key={`brand-${String(addBrandOpen)}-${editBrandTarget?.id ?? brandDefaultName}`}
         open={addBrandOpen}
         defaultName={brandDefaultName}
+        initialBrand={editBrandTarget}
         stacked={brandModalStacked}
         onClose={closeAddBrandModal}
         onCreate={handleCreateBrand}
+        onUpdate={handleUpdateBrand}
       />
 
       <AddDealModal
-        key={defaultCreatorForDeal + defaultBrandForDeal.id + String(addDealOpen)}
+        key={`deal-${String(addDealOpen)}-${editDealTarget?.id ?? `${defaultCreatorForDeal}-${defaultBrandForDeal.id}`}`}
         open={addDealOpen}
         creators={data?.creators || []}
         brands={data?.brands || []}
         defaultCreatorId={defaultCreatorForDeal}
         defaultBrandName={defaultBrandForDeal.name}
         defaultBrandId={defaultBrandForDeal.id}
-        onClose={() => setAddDealOpen(false)}
+        initialDeal={editDealTarget}
+        onClose={() => {
+          setAddDealOpen(false);
+          setEditDealTarget(null);
+        }}
         onRequestRegisterCreator={handleRequestRegisterCreator}
         onRequestRegisterBrand={handleRequestRegisterBrand}
         onCreateDeal={handleCreateDeal}
+        onUpdateDeal={handleUpdateDeal}
       />
 
       <DealBriefModal
@@ -747,6 +1012,20 @@ export function CollabDashboard({
           await commitDealStatusUpdate(targetId, "Paid");
           setPendingPaidTarget(null);
         }}
+      />
+
+      <ConfirmClearDatabaseModal
+        open={clearDbModalOpen}
+        isSubmitting={isClearingDatabase}
+        onCancel={() => setClearDbModalOpen(false)}
+        onConfirm={handleClearDatabase}
+      />
+
+      <RequestDeleteApprovalModal
+        key={deleteApprovalTarget?.entityId ?? "none"}
+        target={deleteApprovalTarget}
+        onCancel={() => setDeleteApprovalTarget(null)}
+        onSubmitRequest={handleSubmitDeleteRequest}
       />
 
       {/* Calm Toast Stack */}

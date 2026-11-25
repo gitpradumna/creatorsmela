@@ -44,31 +44,3 @@ export function DealStatusBadge({ status }: { status: DealStatus }) {
     </span>
   );
 }
-
-export function ModeBadge({ mode }: { mode: "live" | "loopback" | "simulated" }) {
-  if (mode === "live") {
-    return (
-      <span
-        className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold"
-        style={{
-          backgroundColor: "var(--status-paid-bg)",
-          color: "var(--status-paid-text)",
-        }}
-      >
-        Live HTTP
-      </span>
-    );
-  }
-  if (mode === "loopback") {
-    return (
-      <span className="cm-pill-brand inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold">
-        Loopback Sink
-      </span>
-    );
-  }
-  return (
-    <span className="inline-flex items-center rounded-full bg-[var(--surface-chip)] px-2 py-0.5 text-[10px] font-medium text-[var(--text-muted)]">
-      Simulated
-    </span>
-  );
-}

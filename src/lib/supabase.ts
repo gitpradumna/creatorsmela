@@ -39,35 +39,3 @@ export function getSupabaseClient(): SupabaseClient {
     },
   });
 }
-
-/**
- * Executes a GraphQL query/mutation directly against Supabase's built-in pg_graphql endpoint.
- */
-export async function executeSupabaseGraphQL<T = Record<string, unknown>>(
-  query: string,
-  variables?: Record<string, unknown>
-): Promise<{ data?: T; errors?: Array<{ message: string }> }> {
-  const { url, key } = resolveSupabaseCredentials();
-  if (!url || !key) {
-    throw new Error("Supabase URL/Key not configured for pg_graphql.");
-  }
-
-  const endpoint = `${url.replace(/\/+$/, "")}/graphql/v1`;
-  const res = await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      apikey: key,
-      Authorization: `Bearer ${key}`,
-    },
-    body: JSON.stringify({ query, variables }),
-    cache: "no-store",
-  });
-
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`Supabase pg_graphql error (${res.status}): ${text}`);
-  }
-
-  return (await res.json()) as { data?: T; errors?: Array<{ message: string }> };
-}

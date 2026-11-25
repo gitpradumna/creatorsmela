@@ -1,4 +1,3 @@
-import crypto from "crypto";
 import nodemailer from "nodemailer";
 import { calculateSplit, formatFollowers, formatINR } from "@/lib/format";
 import { appendAutomationLogs, getAutomationConfig } from "@/lib/store";
@@ -199,36 +198,6 @@ async function sendEmailViaSmtp(payload: {
   }
 }
 
-function buildWebhookPayload(deal: DealDTO, creator: CreatorDTO, previousStatus: string) {
-  const split = calculateSplit(deal.dealValue, deal.agencyFeePct);
-  return {
-    event: `deal.status.${deal.status.toLowerCase()}`,
-    source: "creatorsmela-iris-collab-os",
-    timestamp: new Date().toISOString(),
-    transition: { from: previousStatus, to: deal.status },
-    creator: {
-      id: creator.id,
-      name: creator.name,
-      handle: creator.handle,
-      niche: creator.niche,
-      followerCount: creator.followerCount,
-      managerName: creator.managerName,
-    },
-    deal: {
-      id: deal.id,
-      brandName: deal.brandName,
-      brandSector: deal.brandSector,
-      campaignTitle: deal.campaignTitle,
-      deliverables: deal.deliverables,
-      dealValue: deal.dealValue,
-      agencyFee: split.agencyFee,
-      netCreatorPayout: split.netCreatorPayout,
-      status: deal.status,
-      dueDate: deal.dueDate,
-    },
-  };
-}
-
 async function postJsonWithTimeout(
   url: string,
   body: Record<string, unknown>,
@@ -270,10 +239,9 @@ export async function dispatchDealAutomations(params: {
   deal: DealDTO;
   creator: CreatorDTO;
   previousStatus: DealStatus | "New";
-  requestOrigin?: string;
   forceAll?: boolean;
 }): Promise<AutomationLogDTO[]> {
-  const { deal, creator, previousStatus, requestOrigin, forceAll = false } = params;
+  const { deal, creator, previousStatus, forceAll = false } = params;
   const config = await getAutomationConfig();
 
   if (
@@ -293,13 +261,6 @@ export async function dispatchDealAutomations(params: {
   ).filter((ch) => config.channels[ch]);
 
   if (enabledChannels.length === 0) return [];
-
-  const signingSecret =
-    process.env.WEBHOOK_SIGNING_SECRET || "creatorsmela-iris-dev-secret";
-  const loopbackUrl =
-    requestOrigin && config.useLoopbackTestSink
-      ? `${requestOrigin}/api/automations/webhook-sink`
-      : null;
 
   const logsToPersist: Omit<AutomationLogDTO, "id">[] = [];
 
@@ -512,70 +473,6 @@ export async function dispatchDealAutomations(params: {
             payload,
             responseBody:
               "Simulated (set GMAIL_USER + GMAIL_APP_PASSWORD, EMAIL_WEBHOOK_URL, or RESEND_API_KEY in .env.local)",
-            triggeredAt,
-          });
-        }
-      } else if (channel === "webhook") {
-        const payload = buildWebhookPayload(deal, creator, previousStatus);
-        const signature = crypto
-          .createHmac("sha256", signingSecret)
-          .update(JSON.stringify(payload))
-          .digest("hex");
-
-        const targetUrl =
-          config.customWebhookUrl?.trim() ||
-          process.env.CUSTOM_WEBHOOK_URL?.trim() ||
-          loopbackUrl;
-
-        if (targetUrl) {
-          const isLoopback = targetUrl === loopbackUrl;
-          const result = await postJsonWithTimeout(targetUrl, payload, {
-            "X-CreatorsMela-Signature": `sha256=${signature}`,
-            "X-CreatorsMela-Event": String(payload.event),
-          });
-          logsToPersist.push({
-            dealId: deal.id,
-            creatorId: creator.id,
-            creatorName: creator.name,
-            brandName: deal.brandName,
-            dealValue: deal.dealValue,
-            previousStatus,
-            newStatus: deal.status,
-            channel,
-            mode: isLoopback ? "loopback" : "live",
-            status: result.ok ? "delivered" : "failed",
-            httpStatus: result.status,
-            latencyMs: result.latencyMs,
-            idempotencyKey,
-            summary: `${isLoopback ? "Loopback" : "Live"} signed webhook (${payload.event}) delivered`,
-            payload: {
-              ...payload,
-              headers: { "X-CreatorsMela-Signature": `sha256=${signature}` },
-            },
-            responseBody: result.responseBody,
-            triggeredAt,
-          });
-        } else {
-          logsToPersist.push({
-            dealId: deal.id,
-            creatorId: creator.id,
-            creatorName: creator.name,
-            brandName: deal.brandName,
-            dealValue: deal.dealValue,
-            previousStatus,
-            newStatus: deal.status,
-            channel,
-            mode: "simulated",
-            status: "delivered",
-            httpStatus: 200,
-            latencyMs: 65,
-            idempotencyKey,
-            summary: `Signed webhook (${payload.event}) generated`,
-            payload: {
-              ...payload,
-              headers: { "X-CreatorsMela-Signature": `sha256=${signature}` },
-            },
-            responseBody: "Simulated (configure custom webhook URL or enable Loopback Sink)",
             triggeredAt,
           });
         }

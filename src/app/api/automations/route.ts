@@ -42,17 +42,9 @@ export async function PUT(req: NextRequest) {
         typeof body.sheetsWebhookUrl === "string"
           ? body.sheetsWebhookUrl.trim()
           : undefined,
-      customWebhookUrl:
-        typeof body.customWebhookUrl === "string"
-          ? body.customWebhookUrl.trim()
-          : undefined,
       managerEmail:
         typeof body.managerEmail === "string"
           ? body.managerEmail.trim()
-          : undefined,
-      useLoopbackTestSink:
-        typeof body.useLoopbackTestSink === "boolean"
-          ? body.useLoopbackTestSink
           : undefined,
     });
     return NextResponse.json({ config });

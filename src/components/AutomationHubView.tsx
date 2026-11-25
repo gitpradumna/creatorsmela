@@ -67,7 +67,6 @@ export function AutomationHubView({
           email: draft.channels.email,
           sheets: draft.channels.sheets,
           slack: draft.channels.slack,
-          webhook: false,
         },
         managerEmail: draft.managerEmail,
         sheetsWebhookUrl: draft.sheetsWebhookUrl,

@@ -3,9 +3,9 @@ info:
   title: CreatorsMela Collab Tracker API
   version: 1.0.0
   description: >
-    REST and GraphQL APIs backed by Supabase PostgreSQL for tracking creators,
-    registered brands, brand collaboration deals, immutable Paid locks, and
-    event-driven workflow automations.
+    REST APIs backed by Supabase PostgreSQL for tracking creators,
+    registered brands, brand collaboration deals, immutable Paid status, and
+    event-driven workflow notifications (Email, Google Sheets, Slack).
 
 servers:
   - url: http://localhost:3000
@@ -205,10 +205,7 @@ paths:
                     mode: simulated
                     httpStatus: 200
                   - channel: sheets
-                    mode: simulated
-                    httpStatus: 200
-                  - channel: webhook
-                    mode: loopback
+                    mode: live
                     httpStatus: 200
 
   /api/deals/{id}:
@@ -254,46 +251,10 @@ paths:
 
   /api/automations/test:
     post:
-      summary: Fire a manual test run across enabled automation channels
-
-  /api/automations/webhook-sink:
-    post:
-      summary: Built-in loopback receiver verifying X-CreatorsMela-Signature HMAC-SHA256
+      summary: Fire a manual test run across enabled notification channels (Email, Google Sheets, Slack)
 
   /api/seed:
     post:
-      summary: Seed CreatorsMela sample creators, brands, deals, and logs
-
-  /api/graphql:
-    get:
-      summary: Inspect GraphQL SDL and sample queries
-    post:
-      summary: Execute GraphQL queries and mutations against Supabase PostgreSQL
-      requestBody:
-        required: true
-        content:
-          application/json:
-            example:
-              query: |
-                query PaidDeals {
-                  deals(status: "Paid") {
-                    id
-                    brandName
-                    creatorName
-                    dealValue
-                    status
-                  }
-                }
-      responses:
-        "200":
-          description: GraphQL execution result
-          content:
-            application/json:
-              example:
-                data:
-                  deals:
-                    - id: "d1e3b4a0-8f22-41af-98d4-99f847021c01"
-                      brandName: Lenskart
-                      creatorName: Hemant Show
-                      dealValue: 480000
-                      status: Paid
+      summary: Reset and seed CreatorsMela sample creators, brands, and deals (6-month history)
+    delete:
+      summary: Delete all creators, brands, deals, and notification logs from the database

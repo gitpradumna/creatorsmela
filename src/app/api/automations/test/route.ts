@@ -54,7 +54,6 @@ export async function POST(req: NextRequest) {
       };
     }
 
-    const origin = new URL(req.url).origin;
     const logs = await dispatchDealAutomations({
       deal: {
         ...targetDeal,
@@ -63,7 +62,6 @@ export async function POST(req: NextRequest) {
       },
       creator: targetCreator,
       previousStatus: "Pending",
-      requestOrigin: origin,
       forceAll: true,
     });
 

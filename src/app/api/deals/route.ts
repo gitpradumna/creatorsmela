@@ -74,12 +74,10 @@ export async function POST(req: NextRequest) {
       notes: typeof body.notes === "string" ? body.notes : undefined,
     });
 
-    const origin = new URL(req.url).origin;
     const automationsTriggered = await dispatchDealAutomations({
       deal,
       creator,
       previousStatus: "New",
-      requestOrigin: origin,
     });
 
     return NextResponse.json(

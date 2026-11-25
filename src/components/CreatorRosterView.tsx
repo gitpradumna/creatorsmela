@@ -3,17 +3,21 @@
 import { useState } from "react";
 import {
   Building2,
+  Check,
   CheckCircle2,
   Download,
   FileText,
   Globe,
+  Pencil,
   Plus,
   Search,
+  ShieldAlert,
   SlidersHorizontal,
   Sparkles,
   Trash2,
   UserPlus,
   Users,
+  X,
 } from "lucide-react";
 import {
   formatFollowers,
@@ -28,6 +32,17 @@ import type {
   DealStatus,
 } from "@/types/collab";
 
+export interface PendingDeleteRequest {
+  id: string;
+  entityType: "deal" | "creator" | "brand";
+  entityId: string;
+  label: string;
+  detail: string;
+  reason: string;
+  requestedBy: string;
+  requestedAt: string;
+}
+
 interface CreatorRosterViewProps {
   creators: CreatorWithDealsDTO[];
   allCreators: CreatorWithDealsDTO[];
@@ -39,9 +54,16 @@ interface CreatorRosterViewProps {
   searchQuery: string;
   onSearchQueryChange: (q: string) => void;
   onUpdateDealStatus: (dealId: string, nextStatus: DealStatus) => Promise<void>;
-  onDeleteDeal: (dealId: string) => Promise<void>;
-  onDeleteCreator: (creatorId: string) => Promise<void>;
-  onDeleteBrand: (brandId: string) => Promise<void>;
+  onDeleteDeal: (dealId: string) => void;
+  onDeleteCreator: (creatorId: string) => void;
+  onDeleteBrand: (brandId: string) => void;
+  pendingDeleteRequests: PendingDeleteRequest[];
+  approvingRequestId: string | null;
+  onApproveDeleteRequest: (requestId: string) => Promise<void>;
+  onRejectDeleteRequest: (requestId: string) => void;
+  onEditDeal: (deal: DealDTO) => void;
+  onEditCreator: (creator: CreatorWithDealsDTO) => void;
+  onEditBrand: (brand: BrandWithStatsDTO) => void;
   onOpenAddDealForCreator: (creatorId: string) => void;
   onOpenAddDealForBrand: (brandName: string, brandId: string) => void;
   onOpenAddCreator: () => void;
@@ -49,7 +71,9 @@ interface CreatorRosterViewProps {
   onOpenDealBrief: (deal: DealDTO, creator: CreatorWithDealsDTO) => void;
   onExportCsv: () => void;
   onSeedData: () => void;
+  onRequestClearDatabase: () => void;
   isSeeding: boolean;
+  isClearingDatabase: boolean;
   updatingDealId: string | null;
 }
 
@@ -71,6 +95,13 @@ export function CreatorRosterView({
   onDeleteDeal,
   onDeleteCreator,
   onDeleteBrand,
+  pendingDeleteRequests,
+  approvingRequestId,
+  onApproveDeleteRequest,
+  onRejectDeleteRequest,
+  onEditDeal,
+  onEditCreator,
+  onEditBrand,
   onOpenAddDealForCreator,
   onOpenAddDealForBrand,
   onOpenAddCreator,
@@ -78,10 +109,23 @@ export function CreatorRosterView({
   onOpenDealBrief,
   onExportCsv,
   onSeedData,
+  onRequestClearDatabase,
   isSeeding,
+  isClearingDatabase,
   updatingDealId,
 }: CreatorRosterViewProps) {
   const [directoryView, setDirectoryView] = useState<DirectoryViewMode>("deals");
+
+  const paidBrandIds = new Set<string>();
+  const paidBrandNames = new Set<string>();
+  for (const c of allCreators) {
+    for (const d of c.deals) {
+      if (d.status === "Paid") {
+        if (d.brandId) paidBrandIds.add(d.brandId);
+        paidBrandNames.add(d.brandName.toLowerCase());
+      }
+    }
+  }
 
   const q = searchQuery.trim().toLowerCase();
   const filteredAllCreators = allCreators.filter((c) => {
@@ -148,17 +192,6 @@ export function CreatorRosterView({
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={onSeedData}
-            disabled={isSeeding}
-            title="Clean database and generate fresh creators, brands, and deals"
-            className="cm-pill-brand inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold transition-opacity hover:opacity-90 disabled:opacity-50"
-          >
-            <Sparkles className="h-3.5 w-3.5" />
-            <span>{isSeeding ? "Generating..." : "Generate Data"}</span>
-          </button>
-
-          <button
-            type="button"
             onClick={onExportCsv}
             className="cm-btn-secondary inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold"
             title="Export deals to CSV"
@@ -168,6 +201,88 @@ export function CreatorRosterView({
           </button>
         </div>
       </div>
+
+      {/* Pending Delete Approvals Queue (Admin Demo Safeguard) */}
+      {pendingDeleteRequests.length > 0 && (
+        <div className="cm-card space-y-3 rounded-2xl border-[var(--accent)]/30 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <ShieldAlert
+                className="h-4 w-4 shrink-0"
+                style={{ color: "var(--status-pending-text)" }}
+              />
+              <div>
+                <h3 className="text-xs font-bold text-[var(--text)]">
+                  Admin Delete Approval Queue ({pendingDeleteRequests.length})
+                </h3>
+                <p className="text-[11px] text-[var(--text-muted)]">
+                  Managers cannot delete records directly. Approve or reject
+                  submitted requests as Admin below (demo preview).
+                </p>
+              </div>
+            </div>
+            <span
+              className="rounded-full px-2.5 py-0.5 text-[10px] font-semibold"
+              style={{
+                backgroundColor: "var(--status-pending-bg)",
+                color: "var(--status-pending-text)",
+              }}
+            >
+              Demo Approval Flow
+            </span>
+          </div>
+
+          <div className="divide-y divide-[var(--border)] rounded-xl border border-[var(--border)] bg-[var(--surface-subtle)]/40">
+            {pendingDeleteRequests.map((req) => {
+              const busy = approvingRequestId === req.id;
+              return (
+                <div
+                  key={req.id}
+                  className="flex flex-col justify-between gap-2.5 px-3.5 py-2.5 sm:flex-row sm:items-center"
+                >
+                  <div className="min-w-0 space-y-0.5">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="cm-pill-brand rounded-full px-2 py-0.5 text-[10px] font-bold uppercase">
+                        {req.entityType}
+                      </span>
+                      <span className="text-xs font-bold text-[var(--text)]">
+                        {req.label}
+                      </span>
+                      <span className="text-[11px] text-[var(--text-muted)]">
+                        · {req.detail}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-[var(--text-muted)]">
+                      Reason: <strong className="text-[var(--text)]">{req.reason}</strong> · Requested by {req.requestedBy}
+                    </p>
+                  </div>
+
+                  <div className="flex shrink-0 items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => onRejectDeleteRequest(req.id)}
+                      className="cm-btn-secondary inline-flex items-center gap-1 rounded-full px-3 py-1 text-[11px] font-semibold disabled:opacity-50"
+                    >
+                      <X className="h-3 w-3" />
+                      <span>Reject</span>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => onApproveDeleteRequest(req.id)}
+                      className="inline-flex items-center gap-1 rounded-full bg-rose-600 px-3 py-1 text-[11px] font-semibold text-white transition-colors hover:bg-rose-700 disabled:opacity-50"
+                    >
+                      <Check className="h-3 w-3" />
+                      <span>{busy ? "Deleting..." : "Approve Delete (Admin)"}</span>
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Search Bar */}
       <div className="cm-card flex items-center gap-2.5 rounded-2xl px-3.5 py-2">
@@ -270,14 +385,40 @@ export function CreatorRosterView({
                       </div>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() => onDeleteCreator(creator.id)}
-                      className="rounded-full p-1.5 text-[var(--text-faint)] transition-colors hover:bg-rose-500/10 hover:text-rose-500"
-                      title="Delete creator"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => onEditCreator(creator)}
+                        className="rounded-full p-1.5 text-[var(--text-faint)] transition-colors hover:bg-[var(--surface-chip)] hover:text-[var(--text)]"
+                        title="Edit creator details"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                      {(() => {
+                        const hasPaid = creator.deals.some(
+                          (d) => d.status === "Paid"
+                        );
+                        return (
+                          <button
+                            type="button"
+                            disabled={hasPaid}
+                            onClick={() => onDeleteCreator(creator.id)}
+                            className={`rounded-full p-1.5 transition-colors ${
+                              hasPaid
+                                ? "cursor-not-allowed text-[var(--text-faint)] opacity-35"
+                                : "text-[var(--text-faint)] hover:bg-rose-500/10 hover:text-rose-500"
+                            }`}
+                            title={
+                              hasPaid
+                                ? "Cannot delete creator with Paid deals"
+                                : "Delete creator"
+                            }
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        );
+                      })()}
+                    </div>
                   </div>
 
                   <div className="flex items-center justify-between border-t border-[var(--border)] pt-3 text-xs">
@@ -370,14 +511,40 @@ export function CreatorRosterView({
                       </div>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() => onDeleteBrand(brand.id)}
-                      className="rounded-full p-1.5 text-[var(--text-faint)] transition-colors hover:bg-rose-500/10 hover:text-rose-500"
-                      title="Delete brand"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => onEditBrand(brand)}
+                        className="rounded-full p-1.5 text-[var(--text-faint)] transition-colors hover:bg-[var(--surface-chip)] hover:text-[var(--text)]"
+                        title="Edit brand details"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                      {(() => {
+                        const hasPaid =
+                          paidBrandIds.has(brand.id) ||
+                          paidBrandNames.has(brand.name.toLowerCase());
+                        return (
+                          <button
+                            type="button"
+                            disabled={hasPaid}
+                            onClick={() => onDeleteBrand(brand.id)}
+                            className={`rounded-full p-1.5 transition-colors ${
+                              hasPaid
+                                ? "cursor-not-allowed text-[var(--text-faint)] opacity-35"
+                                : "text-[var(--text-faint)] hover:bg-rose-500/10 hover:text-rose-500"
+                            }`}
+                            title={
+                              hasPaid
+                                ? "Cannot delete brand with Paid deals"
+                                : "Delete brand"
+                            }
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        );
+                      })()}
+                    </div>
                   </div>
 
                   {brand.website && (
@@ -537,13 +704,39 @@ export function CreatorRosterView({
 
                       <button
                         type="button"
-                        onClick={() => onDeleteCreator(creator.id)}
-                        className="inline-flex h-7 w-7 items-center justify-center rounded-full text-[var(--text-faint)] transition-colors hover:bg-rose-500/10 hover:text-rose-500"
-                        title="Delete creator"
-                        aria-label={`Delete ${creator.name}`}
+                        onClick={() => onEditCreator(creator)}
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-full text-[var(--text-faint)] transition-colors hover:bg-[var(--surface-chip)] hover:text-[var(--text)]"
+                        title="Edit creator details"
+                        aria-label={`Edit ${creator.name}`}
                       >
-                        <Trash2 className="h-3.5 w-3.5" />
+                        <Pencil className="h-3.5 w-3.5" />
                       </button>
+
+                      {(() => {
+                        const hasPaid = creator.deals.some(
+                          (d) => d.status === "Paid"
+                        );
+                        return (
+                          <button
+                            type="button"
+                            disabled={hasPaid}
+                            onClick={() => onDeleteCreator(creator.id)}
+                            className={`inline-flex h-7 w-7 items-center justify-center rounded-full transition-colors ${
+                              hasPaid
+                                ? "cursor-not-allowed text-[var(--text-faint)] opacity-35"
+                                : "text-[var(--text-faint)] hover:bg-rose-500/10 hover:text-rose-500"
+                            }`}
+                            title={
+                              hasPaid
+                                ? "Cannot delete creator with Paid deals"
+                                : "Delete creator"
+                            }
+                            aria-label={`Delete ${creator.name}`}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        );
+                      })()}
                     </div>
                   </div>
 
@@ -653,10 +846,37 @@ export function CreatorRosterView({
 
                               <button
                                 type="button"
-                                disabled={isBusy}
+                                disabled={deal.status === "Paid" || isBusy}
+                                onClick={() => onEditDeal(deal)}
+                                className={`inline-flex h-7 w-7 items-center justify-center rounded-lg transition-colors ${
+                                  deal.status === "Paid"
+                                    ? "cursor-not-allowed text-[var(--text-faint)] opacity-35"
+                                    : "text-[var(--text-faint)] hover:bg-[var(--surface-chip)] hover:text-[var(--text)]"
+                                }`}
+                                title={
+                                  deal.status === "Paid"
+                                    ? "Paid deals cannot be edited"
+                                    : "Edit deal details"
+                                }
+                                aria-label={`Edit ${deal.brandName} deal`}
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </button>
+
+                              <button
+                                type="button"
+                                disabled={deal.status === "Paid" || isBusy}
                                 onClick={() => onDeleteDeal(deal.id)}
-                                className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-[var(--text-faint)] transition-colors hover:bg-rose-500/10 hover:text-rose-500"
-                                title="Delete deal"
+                                className={`inline-flex h-7 w-7 items-center justify-center rounded-lg transition-colors ${
+                                  deal.status === "Paid"
+                                    ? "cursor-not-allowed text-[var(--text-faint)] opacity-35"
+                                    : "text-[var(--text-faint)] hover:bg-rose-500/10 hover:text-rose-500"
+                                }`}
+                                title={
+                                  deal.status === "Paid"
+                                    ? "Paid deals cannot be deleted"
+                                    : "Request delete approval"
+                                }
                                 aria-label={`Delete ${deal.brandName} deal`}
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
@@ -673,6 +893,48 @@ export function CreatorRosterView({
           )}
         </>
       )}
+
+      {/* Demo-Only Database Controls (Not exposed to Managers in Production) */}
+      <div className="cm-card flex flex-col justify-between gap-3 rounded-2xl border-dashed border-[var(--border-strong)] p-4 sm:flex-row sm:items-center">
+        <div className="space-y-0.5">
+          <div className="flex items-center gap-2">
+            <span className="cm-pill-brand rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider">
+              For Demo Purpose Only
+            </span>
+            <h3 className="text-xs font-bold text-[var(--text)]">
+              Demo Database Controls
+            </h3>
+          </div>
+          <p className="text-[11px] text-[var(--text-muted)]">
+            In production, managers cannot delete or regenerate the database.
+            These buttons are included strictly for demo testing.
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={onSeedData}
+            disabled={isSeeding || isClearingDatabase}
+            title="Delete all existing data and generate a fresh 6-month database"
+            className="cm-pill-brand inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold transition-opacity hover:opacity-90 disabled:opacity-50"
+          >
+            <Sparkles className="h-3.5 w-3.5" />
+            <span>{isSeeding ? "Resetting DB..." : "Generate Database"}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={onRequestClearDatabase}
+            disabled={isSeeding || isClearingDatabase}
+            title="Delete all creators, brands, deals, and logs from the database"
+            className="inline-flex items-center gap-1.5 rounded-full border border-rose-500/25 bg-rose-500/10 px-3.5 py-1.5 text-xs font-semibold text-rose-600 transition-colors hover:bg-rose-500/20 dark:text-rose-400 disabled:opacity-50"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            <span>{isClearingDatabase ? "Deleting..." : "Delete Database"}</span>
+          </button>
+        </div>
+      </div>
     </section>
   );
 }

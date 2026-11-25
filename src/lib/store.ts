@@ -1,4 +1,4 @@
-import { SEED_BRANDS, SEED_CREATORS, SEED_DEALS } from "@/lib/seed-data";
+import { buildSeedDeals, SEED_BRANDS, SEED_CREATORS } from "@/lib/seed-data";
 import { getSupabaseClient } from "@/lib/supabase";
 import type {
   AutomationChannel,
@@ -90,7 +90,7 @@ interface AutomationLogRow {
   previous_status: string;
   new_status: DealStatus;
   channel: AutomationChannel;
-  mode: "live" | "loopback" | "simulated";
+  mode: "live" | "simulated";
   status: "delivered" | "failed";
   http_status: number;
   latency_ms: number;
@@ -165,23 +165,10 @@ function mapConfigRow(row: AutomationConfigRow): AutomationConfigDTO {
       slack: row.channel_slack,
       sheets: row.channel_sheets,
       email: row.channel_email,
-      webhook: row.channel_webhook,
     },
     slackWebhookUrl: row.slack_webhook_url || "",
     sheetsWebhookUrl: row.sheets_webhook_url || "",
-    customWebhookUrl: row.custom_webhook_url || "",
     managerEmail: row.manager_email || "talent-ops@creatorsmela.com",
-    useLoopbackTestSink: row.use_loopback_test_sink,
-    envConfigured: {
-      slack: Boolean(process.env.SLACK_WEBHOOK_URL?.trim()),
-      sheets: Boolean(process.env.GOOGLE_SHEETS_WEBHOOK_URL?.trim()),
-      email: Boolean(
-        (process.env.SMTP_USER?.trim() || process.env.GMAIL_USER?.trim()) &&
-          (process.env.SMTP_PASS?.trim() ||
-            process.env.GMAIL_APP_PASSWORD?.trim())
-      ) || Boolean(process.env.EMAIL_WEBHOOK_URL?.trim() || process.env.RESEND_API_KEY?.trim()),
-      webhook: Boolean(process.env.CUSTOM_WEBHOOK_URL?.trim()),
-    },
     updatedAt: row.updated_at,
   };
 }
@@ -347,6 +334,21 @@ export async function updateCreator(
 
 export async function deleteCreator(id: string): Promise<boolean> {
   const supabase = getSupabaseClient();
+  const { data: paidDeals, error: checkErr } = await supabase
+    .from("deals")
+    .select("id")
+    .eq("creator_id", id)
+    .eq("status", "Paid")
+    .limit(1);
+
+  if (checkErr) {
+    if (checkErr.code === "22P02") return false;
+    throw new Error(checkErr.message);
+  }
+  if (paidDeals && paidDeals.length > 0) {
+    throw new Error("Cannot delete a creator who has Paid deals.");
+  }
+
   const { data, error } = await supabase
     .from("creators")
     .delete()
@@ -423,8 +425,86 @@ export async function createBrand(input: CreateBrandInput): Promise<BrandDTO> {
   return mapBrandRow(data as BrandRow);
 }
 
+export async function updateBrand(
+  id: string,
+  patch: Partial<CreateBrandInput>
+): Promise<BrandDTO | null> {
+  const supabase = getSupabaseClient();
+  const existing = await getBrandById(id);
+  if (!existing) return null;
+
+  const updateRow: Record<string, unknown> = {};
+  if (patch.name !== undefined) {
+    const cleanName = patch.name.trim();
+    const conflict = await findBrandByName(cleanName);
+    if (conflict && conflict.id !== id) {
+      throw new Error(`Brand "${cleanName}" is already registered.`);
+    }
+    updateRow.name = cleanName;
+  }
+  if (patch.sector !== undefined) {
+    updateRow.sector = (patch.sector.trim() || "CONSUMER").toUpperCase();
+  }
+  if (patch.contactName !== undefined) {
+    updateRow.contact_name = patch.contactName.trim();
+  }
+  if (patch.contactEmail !== undefined) {
+    updateRow.contact_email = patch.contactEmail.trim();
+  }
+  if (patch.website !== undefined) {
+    updateRow.website = patch.website.trim();
+  }
+  if (patch.notes !== undefined) {
+    updateRow.notes = patch.notes.trim();
+  }
+
+  const { data, error } = await supabase
+    .from("brands")
+    .update(updateRow)
+    .eq("id", id)
+    .select("*")
+    .maybeSingle();
+
+  if (error) {
+    if (error.code === "22P02") return null;
+    throw new Error(error.message);
+  }
+  if (!data) return null;
+
+  const updated = mapBrandRow(data as BrandRow);
+
+  // Sync brand name/sector on non-Paid deals so settled Paid deals remain untouched
+  if (patch.name !== undefined || patch.sector !== undefined) {
+    await supabase
+      .from("deals")
+      .update({
+        brand_name: updated.name,
+        brand_sector: updated.sector,
+      })
+      .eq("brand_id", id)
+      .neq("status", "Paid");
+  }
+
+  return updated;
+}
+
 export async function deleteBrand(id: string): Promise<boolean> {
   const supabase = getSupabaseClient();
+  const { data: paidDeals, error: checkErr } = await supabase
+    .from("deals")
+    .select("id")
+    .eq("brand_id", id)
+    .eq("status", "Paid")
+    .limit(1);
+
+  if (checkErr) {
+    if (checkErr.code === "22P02") return false;
+    throw new Error(checkErr.message);
+  }
+  if (paidDeals && paidDeals.length > 0) {
+    throw new Error("Cannot delete a brand that has Paid deals.");
+  }
+
   const { data, error } = await supabase
     .from("brands")
     .delete()
@@ -589,17 +669,45 @@ export async function updateDeal(
   const creator = await getCreatorById(patch.creatorId || existing.creator_id);
   const previous = mapDealRow(existing, creator?.name);
 
+  const definedKeys = Object.keys(patch).filter(
+    (k) => patch[k as keyof typeof patch] !== undefined
+  );
+  const isAutomationStampOnly =
+    definedKeys.length === 1 && definedKeys[0] === "lastAutomatedStatus";
+
   const nextStatus = patch.status ?? existing.status;
-  if (existing.status === "Paid" && nextStatus !== "Paid") {
-    throw new Error("Deals marked as Paid cannot change status.");
+  if (existing.status === "Paid" && !isAutomationStampOnly) {
+    throw new Error("Paid deals cannot be edited or have their status changed.");
   }
 
   const updateRow: Record<string, unknown> = {};
-  if (patch.creatorId !== undefined) updateRow.creator_id = patch.creatorId;
-  if (patch.brandName !== undefined)
-    updateRow.brand_name = patch.brandName.trim();
-  if (patch.brandSector !== undefined)
+  if (patch.creatorId !== undefined) {
+    const targetCreator = await getCreatorById(patch.creatorId);
+    if (!targetCreator) {
+      throw new Error("Creator not found. Please register the creator first.");
+    }
+    updateRow.creator_id = targetCreator.id;
+  }
+  if (patch.brandId !== undefined || patch.brandName !== undefined) {
+    let brandRecord: BrandDTO | null = null;
+    if (patch.brandId) {
+      brandRecord = await getBrandById(patch.brandId);
+    }
+    if (!brandRecord && patch.brandName?.trim()) {
+      brandRecord = await findBrandByName(patch.brandName);
+    }
+    if (!brandRecord) {
+      throw new Error(
+        `Brand "${patch.brandName?.trim() || ""}" is not registered.`
+      );
+    }
+    updateRow.brand_id = brandRecord.id;
+    updateRow.brand_name = brandRecord.name;
+    updateRow.brand_sector =
+      patch.brandSector?.trim().toUpperCase() || brandRecord.sector || "COLLAB";
+  } else if (patch.brandSector !== undefined) {
     updateRow.brand_sector = patch.brandSector.trim().toUpperCase();
+  }
   if (patch.campaignTitle !== undefined)
     updateRow.campaign_title = patch.campaignTitle.trim();
   if (patch.deliverables !== undefined)
@@ -640,6 +748,12 @@ export async function updateDeal(
 
 export async function deleteDeal(id: string): Promise<boolean> {
   const supabase = getSupabaseClient();
+  const existing = await getDealById(id);
+  if (!existing) return false;
+  if (existing.status === "Paid") {
+    throw new Error("Paid deals cannot be deleted.");
+  }
+
   const { data, error } = await supabase
     .from("deals")
     .delete()
@@ -692,13 +806,10 @@ export async function updateAutomationConfig(
     channel_slack: patch.channels?.slack ?? current.channels.slack,
     channel_sheets: patch.channels?.sheets ?? current.channels.sheets,
     channel_email: patch.channels?.email ?? current.channels.email,
-    channel_webhook: patch.channels?.webhook ?? current.channels.webhook,
+    channel_webhook: false,
     slack_webhook_url: patch.slackWebhookUrl ?? current.slackWebhookUrl,
     sheets_webhook_url: patch.sheetsWebhookUrl ?? current.sheetsWebhookUrl,
-    custom_webhook_url: patch.customWebhookUrl ?? current.customWebhookUrl,
     manager_email: patch.managerEmail ?? current.managerEmail,
-    use_loopback_test_sink:
-      patch.useLoopbackTestSink ?? current.useLoopbackTestSink,
   };
 
   const { data, error } = await supabase
@@ -860,6 +971,31 @@ export async function getDashboardPayload(): Promise<DashboardPayload> {
   };
 }
 
+/**
+ * Deletes all creator, brand, deal, and notification log records from Supabase PostgreSQL.
+ */
+export async function clearDatabaseData(): Promise<{ cleared: boolean }> {
+  const supabase = getSupabaseClient();
+  const wipeTargets = [
+    { table: "automation_logs", col: "id" },
+    { table: "deals", col: "id" },
+    { table: "brands", col: "id" },
+    { table: "creators", col: "id" },
+  ] as const;
+
+  for (const target of wipeTargets) {
+    const { error: wipeErr } = await supabase
+      .from(target.table)
+      .delete()
+      .not(target.col, "is", null);
+    if (wipeErr) {
+      throw new Error(`Failed to clear ${target.table}: ${wipeErr.message}`);
+    }
+  }
+
+  return { cleared: true };
+}
+
 export async function seedCreatorsMelaData(force = true): Promise<{
   seeded: boolean;
   creatorsCreated: number;
@@ -879,92 +1015,132 @@ export async function seedCreatorsMelaData(force = true): Promise<{
     }
   }
 
-  // Clean up all tables in dependency order before creating fresh sample data
-  await supabase
-    .from("automation_logs")
-    .delete()
-    .neq("id", "00000000-0000-0000-0000-000000000000");
-  await supabase
-    .from("deals")
-    .delete()
-    .neq("id", "00000000-0000-0000-0000-000000000000");
-  await supabase
-    .from("brands")
-    .delete()
-    .neq("id", "00000000-0000-0000-0000-000000000000");
-  await supabase
+  // Delete all existing rows across every data table in dependency order
+  await clearDatabaseData();
+
+  const { data: insertedCreators, error: creatorSeedErr } = await supabase
     .from("creators")
-    .delete()
-    .neq("id", "00000000-0000-0000-0000-000000000000");
+    .insert(
+      SEED_CREATORS.map((c) => ({
+        name: c.name.trim(),
+        handle: c.handle.trim(),
+        platform: c.platform,
+        niche: c.niche.trim(),
+        follower_count: c.followerCount,
+        engagement_rate: c.engagementRate,
+        base_rate: c.baseRate,
+        email: c.email.trim(),
+        manager_name: c.managerName.trim(),
+        tier: c.tier,
+      }))
+    )
+    .select("*");
+  if (creatorSeedErr) {
+    throw new Error(`Failed to seed creators: ${creatorSeedErr.message}`);
+  }
 
   const creatorIdByName = new Map<string, string>();
-  for (const c of SEED_CREATORS) {
-    const created = await createCreator(c);
-    creatorIdByName.set(created.name, created.id);
+  for (const row of (insertedCreators || []) as CreatorRow[]) {
+    creatorIdByName.set(row.name, row.id);
+  }
+
+  const { data: insertedBrands, error: brandSeedErr } = await supabase
+    .from("brands")
+    .insert(
+      SEED_BRANDS.map((b) => ({
+        name: b.name.trim(),
+        sector: b.sector.trim().toUpperCase(),
+        contact_name: b.contactName.trim(),
+        contact_email: b.contactEmail.trim(),
+        website: b.website.trim(),
+        notes: b.notes.trim(),
+      }))
+    )
+    .select("*");
+  if (brandSeedErr) {
+    throw new Error(`Failed to seed brands: ${brandSeedErr.message}`);
   }
 
   const brandIdByName = new Map<string, string>();
-  for (const b of SEED_BRANDS) {
-    const created = await createBrand(b);
-    brandIdByName.set(created.name.toLowerCase(), created.id);
+  for (const row of (insertedBrands || []) as BrandRow[]) {
+    brandIdByName.set(row.name.toLowerCase(), row.id);
   }
 
-  const seededLogs: Omit<AutomationLogDTO, "id">[] = [];
-  let dealsCreated = 0;
+  const nowIso = new Date().toISOString();
+  const seedDeals = buildSeedDeals();
+  const dealInsertRows = seedDeals
+    .map((d) => {
+      const creatorId = creatorIdByName.get(d.creatorName);
+      const brandId = brandIdByName.get(d.brandName.toLowerCase());
+      if (!creatorId || !brandId) return null;
+      const isClosed = d.status === "Confirmed" || d.status === "Paid";
+      return {
+        creator_id: creatorId,
+        brand_id: brandId,
+        brand_name: d.brandName.trim(),
+        brand_sector: d.brandSector.trim().toUpperCase(),
+        campaign_title: d.campaignTitle.trim(),
+        deliverables: d.deliverables.trim(),
+        deal_value: d.dealValue,
+        agency_fee_pct: d.agencyFeePct,
+        status: d.status,
+        due_date: d.dueDate,
+        notes: d.notes.trim(),
+        last_automated_status: isClosed ? d.status : null,
+        confirmed_at: isClosed ? nowIso : null,
+        paid_at: d.status === "Paid" ? nowIso : null,
+      };
+    })
+    .filter((row): row is NonNullable<typeof row> => Boolean(row));
 
-  for (const d of SEED_DEALS) {
-    const creatorId = creatorIdByName.get(d.creatorName);
-    const brandId = brandIdByName.get(d.brandName.toLowerCase());
-    if (!creatorId || !brandId) continue;
-    const deal = await createDeal({
-      creatorId,
-      brandId,
-      brandName: d.brandName,
-      brandSector: d.brandSector,
-      campaignTitle: d.campaignTitle,
-      deliverables: d.deliverables,
-      dealValue: d.dealValue,
-      agencyFeePct: d.agencyFeePct,
-      status: d.status,
-      dueDate: d.dueDate,
-      notes: d.notes,
-    });
-    dealsCreated += 1;
+  const { data: insertedDeals, error: dealSeedErr } = await supabase
+    .from("deals")
+    .insert(dealInsertRows)
+    .select("*");
+  if (dealSeedErr) {
+    throw new Error(`Failed to seed deals: ${dealSeedErr.message}`);
+  }
 
-    if (d.status === "Confirmed" || d.status === "Paid") {
-      seededLogs.push({
+  const seededDeals = (insertedDeals || []) as DealRow[];
+  const creatorNameById = new Map<string, string>(
+    [...creatorIdByName.entries()].map(([name, id]) => [id, name])
+  );
+  const seededLogs: Omit<AutomationLogDTO, "id">[] = seededDeals
+    .filter((d) => d.status === "Confirmed" || d.status === "Paid")
+    .map((deal) => {
+      const creatorName = creatorNameById.get(deal.creator_id) || "Creator";
+      return {
         dealId: deal.id,
-        creatorId,
-        creatorName: d.creatorName,
-        brandName: d.brandName,
-        dealValue: d.dealValue,
+        creatorId: deal.creator_id,
+        creatorName,
+        brandName: deal.brand_name,
+        dealValue: Number(deal.deal_value),
         previousStatus: "Pending",
-        newStatus: d.status,
+        newStatus: deal.status,
         channel: "slack",
         mode: "simulated",
         status: "delivered",
         httpStatus: 200,
         latencyMs: 118,
-        idempotencyKey: `${deal.id}:Pending->${d.status}:slack`,
-        summary: `Slack #deals-ops alerted: ${d.creatorName} × ${d.brandName} moved to ${d.status}`,
+        idempotencyKey: `${deal.id}:Pending->${deal.status}:slack`,
+        summary: `Slack #deals-ops alerted: ${creatorName} × ${deal.brand_name} moved to ${deal.status}`,
         payload: {
           channel: "#deals-ops",
-          creator: d.creatorName,
-          brand: d.brandName,
-          valueINR: d.dealValue,
-          status: d.status,
+          creator: creatorName,
+          brand: deal.brand_name,
+          valueINR: Number(deal.deal_value),
+          status: deal.status,
         },
         responseBody: "ok",
-        triggeredAt: deal.updatedAt,
-      });
-    }
-  }
+        triggeredAt: deal.updated_at,
+      };
+    });
 
   await appendAutomationLogs(seededLogs);
   return {
     seeded: true,
     creatorsCreated: creatorIdByName.size,
     brandsCreated: brandIdByName.size,
-    dealsCreated,
+    dealsCreated: seededDeals.length,
   };
 }

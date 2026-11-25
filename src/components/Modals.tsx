@@ -8,6 +8,8 @@ import {
   Copy,
   Plus,
   Printer,
+  ShieldAlert,
+  Trash2,
   X,
   Zap,
 } from "lucide-react";
@@ -32,6 +34,7 @@ import type {
 interface AddCreatorModalProps {
   open: boolean;
   defaultName?: string;
+  initialCreator?: CreatorDTO | null;
   stacked?: boolean;
   onClose: () => void;
   onCreate: (payload: {
@@ -45,21 +48,41 @@ interface AddCreatorModalProps {
     managerName: string;
     tier: CreatorTier;
   }) => Promise<CreatorDTO>;
+  onUpdate?: (
+    id: string,
+    payload: {
+      name: string;
+      handle: string;
+      platform: PlatformType;
+      niche: string;
+      followerCount: number;
+      managerName: string;
+    }
+  ) => Promise<CreatorDTO>;
 }
 
 export function AddCreatorModal({
   open,
   defaultName = "",
+  initialCreator = null,
   stacked = false,
   onClose,
   onCreate,
+  onUpdate,
 }: AddCreatorModalProps) {
-  const [name, setName] = useState(defaultName);
-  const [handle, setHandle] = useState("");
-  const [platform, setPlatform] = useState<PlatformType>("Multi-platform");
-  const [niche, setNiche] = useState("");
-  const [followerCount, setFollowerCount] = useState("");
-  const [managerName, setManagerName] = useState("Ananya Kapoor");
+  const isEdit = Boolean(initialCreator);
+  const [name, setName] = useState(initialCreator?.name ?? defaultName);
+  const [handle, setHandle] = useState(initialCreator?.handle ?? "");
+  const [platform, setPlatform] = useState<PlatformType>(
+    initialCreator?.platform ?? "Multi-platform"
+  );
+  const [niche, setNiche] = useState(initialCreator?.niche ?? "");
+  const [followerCount, setFollowerCount] = useState(
+    initialCreator ? String(initialCreator.followerCount) : ""
+  );
+  const [managerName, setManagerName] = useState(
+    initialCreator?.managerName ?? "Ananya Kapoor"
+  );
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
@@ -76,24 +99,41 @@ export function AddCreatorModal({
 
     setSubmitting(true);
     try {
-      await onCreate({
-        name: name.trim(),
-        handle: handle.trim(),
-        platform,
-        niche: niche.trim(),
-        followerCount: followers,
-        engagementRate: 6.2,
-        baseRate: 150000,
-        managerName: managerName.trim() || "Talent Ops Desk",
-        tier: "Exclusive",
-      });
+      if (isEdit && initialCreator && onUpdate) {
+        await onUpdate(initialCreator.id, {
+          name: name.trim(),
+          handle: handle.trim(),
+          platform,
+          niche: niche.trim(),
+          followerCount: followers,
+          managerName: managerName.trim() || "Talent Ops Desk",
+        });
+      } else {
+        await onCreate({
+          name: name.trim(),
+          handle: handle.trim(),
+          platform,
+          niche: niche.trim(),
+          followerCount: followers,
+          engagementRate: 6.2,
+          baseRate: 150000,
+          managerName: managerName.trim() || "Talent Ops Desk",
+          tier: "Exclusive",
+        });
+      }
       setName("");
       setHandle("");
       setNiche("");
       setFollowerCount("");
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to add creator");
+      setError(
+        err instanceof Error
+          ? err.message
+          : isEdit
+            ? "Failed to update creator"
+            : "Failed to add creator"
+      );
     } finally {
       setSubmitting(false);
     }
@@ -108,7 +148,7 @@ export function AddCreatorModal({
       <div className="cm-card w-full max-w-md rounded-2xl p-6">
         <div className="flex items-center justify-between border-b border-[var(--border)] pb-3">
           <h2 className="text-base font-bold text-[var(--text)]">
-            Register Creator
+            {isEdit ? "Edit Creator" : "Register Creator"}
           </h2>
           <button
             type="button"
@@ -226,7 +266,11 @@ export function AddCreatorModal({
               disabled={submitting}
               className="cm-btn-primary rounded-full px-5 py-2 text-xs font-semibold disabled:opacity-50"
             >
-              {submitting ? "Saving..." : "Register Creator"}
+              {submitting
+                ? "Saving..."
+                : isEdit
+                  ? "Save Changes"
+                  : "Register Creator"}
             </button>
           </div>
         </form>
@@ -238,6 +282,7 @@ export function AddCreatorModal({
 interface AddBrandModalProps {
   open: boolean;
   defaultName?: string;
+  initialBrand?: BrandDTO | null;
   stacked?: boolean;
   onClose: () => void;
   onCreate: (payload: {
@@ -248,21 +293,39 @@ interface AddBrandModalProps {
     website: string;
     notes: string;
   }) => Promise<BrandDTO>;
+  onUpdate?: (
+    id: string,
+    payload: {
+      name: string;
+      sector: string;
+      contactName: string;
+      contactEmail: string;
+      website: string;
+      notes: string;
+    }
+  ) => Promise<BrandDTO>;
 }
 
 export function AddBrandModal({
   open,
   defaultName = "",
+  initialBrand = null,
   stacked = false,
   onClose,
   onCreate,
+  onUpdate,
 }: AddBrandModalProps) {
-  const [name, setName] = useState(defaultName);
-  const [sector, setSector] = useState("CONSUMER");
-  const [contactName, setContactName] = useState("");
-  const [contactEmail, setContactEmail] = useState("");
-  const [website, setWebsite] = useState("");
-  const [notes, setNotes] = useState("");
+  const isEdit = Boolean(initialBrand);
+  const [name, setName] = useState(initialBrand?.name ?? defaultName);
+  const [sector, setSector] = useState(initialBrand?.sector ?? "CONSUMER");
+  const [contactName, setContactName] = useState(
+    initialBrand?.contactName ?? ""
+  );
+  const [contactEmail, setContactEmail] = useState(
+    initialBrand?.contactEmail ?? ""
+  );
+  const [website, setWebsite] = useState(initialBrand?.website ?? "");
+  const [notes, setNotes] = useState(initialBrand?.notes ?? "");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
@@ -278,14 +341,19 @@ export function AddBrandModal({
 
     setSubmitting(true);
     try {
-      await onCreate({
+      const payload = {
         name: name.trim(),
         sector: sector.trim() || "CONSUMER",
         contactName: contactName.trim(),
         contactEmail: contactEmail.trim(),
         website: website.trim(),
         notes: notes.trim(),
-      });
+      };
+      if (isEdit && initialBrand && onUpdate) {
+        await onUpdate(initialBrand.id, payload);
+      } else {
+        await onCreate(payload);
+      }
       setName("");
       setSector("CONSUMER");
       setContactName("");
@@ -294,7 +362,13 @@ export function AddBrandModal({
       setNotes("");
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to register brand");
+      setError(
+        err instanceof Error
+          ? err.message
+          : isEdit
+            ? "Failed to update brand"
+            : "Failed to register brand"
+      );
     } finally {
       setSubmitting(false);
     }
@@ -311,7 +385,7 @@ export function AddBrandModal({
           <div className="flex items-center gap-2">
             <Building2 className="h-4 w-4 text-[var(--accent-text)]" />
             <h2 className="text-base font-bold text-[var(--text)]">
-              Register Brand
+              {isEdit ? "Edit Brand" : "Register Brand"}
             </h2>
           </div>
           <button
@@ -427,7 +501,11 @@ export function AddBrandModal({
               disabled={submitting}
               className="cm-btn-primary rounded-full px-5 py-2 text-xs font-semibold disabled:opacity-50"
             >
-              {submitting ? "Saving..." : "Register Brand"}
+              {submitting
+                ? "Saving..."
+                : isEdit
+                  ? "Save Changes"
+                  : "Register Brand"}
             </button>
           </div>
         </form>
@@ -600,6 +678,7 @@ interface AddDealModalProps {
   defaultCreatorId: string;
   defaultBrandName?: string;
   defaultBrandId?: string;
+  initialDeal?: DealDTO | null;
   onClose: () => void;
   onRequestRegisterCreator: (typedName: string) => Promise<CreatorDTO | null>;
   onRequestRegisterBrand: (typedName: string) => Promise<BrandDTO | null>;
@@ -616,6 +695,22 @@ interface AddDealModalProps {
     dueDate: string;
     notes: string;
   }) => Promise<void>;
+  onUpdateDeal?: (
+    id: string,
+    payload: {
+      creatorId: string;
+      brandId?: string;
+      brandName: string;
+      brandSector: string;
+      campaignTitle: string;
+      deliverables: string;
+      dealValue: number;
+      agencyFeePct: number;
+      status: DealStatus;
+      dueDate: string;
+      notes: string;
+    }
+  ) => Promise<void>;
 }
 
 export function AddDealModal({
@@ -625,32 +720,61 @@ export function AddDealModal({
   defaultCreatorId,
   defaultBrandName = "",
   defaultBrandId = "",
+  initialDeal = null,
   onClose,
   onRequestRegisterCreator,
   onRequestRegisterBrand,
   onCreateDeal,
+  onUpdateDeal,
 }: AddDealModalProps) {
-  const initialCreator = defaultCreatorId
-    ? creators.find((c) => c.id === defaultCreatorId)
+  const isEdit = Boolean(initialDeal);
+  const resolvedInitialCreatorId = initialDeal?.creatorId || defaultCreatorId;
+  const initialCreator = resolvedInitialCreatorId
+    ? creators.find((c) => c.id === resolvedInitialCreatorId)
     : undefined;
-  const [creatorName, setCreatorName] = useState(initialCreator?.name || "");
+  const [creatorName, setCreatorName] = useState(
+    initialCreator?.name || initialDeal?.creatorName || ""
+  );
   const [selectedCreatorId, setSelectedCreatorId] = useState(
     initialCreator?.id || ""
   );
 
-  const [brandName, setBrandName] = useState(defaultBrandName);
-  const [selectedBrandId, setSelectedBrandId] = useState(defaultBrandId);
-  const [brandSector, setBrandSector] = useState(() => {
-    if (!defaultBrandId) return "COLLAB";
-    return brands.find((b) => b.id === defaultBrandId)?.sector || "COLLAB";
-  });
+  const initialBrandObj = initialDeal
+    ? brands.find(
+        (b) =>
+          b.id === initialDeal.brandId ||
+          b.name.toLowerCase() === initialDeal.brandName.toLowerCase()
+      )
+    : defaultBrandId
+      ? brands.find((b) => b.id === defaultBrandId)
+      : undefined;
 
-  const [deliverables, setDeliverables] = useState("1 IG Reel + 2 Stories");
-  const [dealValue, setDealValue] = useState("");
-  const [agencyFeePct, setAgencyFeePct] = useState("15");
-  const [status, setStatus] = useState<DealStatus>("Pending");
-  const [dueDate, setDueDate] = useState("2026-12-15");
-  const [notes, setNotes] = useState("");
+  const [brandName, setBrandName] = useState(
+    initialBrandObj?.name || initialDeal?.brandName || defaultBrandName
+  );
+  const [selectedBrandId, setSelectedBrandId] = useState(
+    initialBrandObj?.id || defaultBrandId
+  );
+  const [brandSector, setBrandSector] = useState(
+    initialBrandObj?.sector || initialDeal?.brandSector || "COLLAB"
+  );
+
+  const [deliverables, setDeliverables] = useState(
+    initialDeal?.deliverables || "1 IG Reel + 2 Stories"
+  );
+  const [dealValue, setDealValue] = useState(
+    initialDeal ? String(initialDeal.dealValue) : ""
+  );
+  const [agencyFeePct, setAgencyFeePct] = useState(
+    initialDeal ? String(initialDeal.agencyFeePct) : "15"
+  );
+  const [status, setStatus] = useState<DealStatus>(
+    initialDeal?.status || "Pending"
+  );
+  const [dueDate, setDueDate] = useState(
+    initialDeal?.dueDate || new Date().toISOString().slice(0, 10)
+  );
+  const [notes, setNotes] = useState(initialDeal?.notes || "");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
@@ -726,7 +850,7 @@ export function AddDealModal({
 
     setSubmitting(true);
     try {
-      await onCreateDeal({
+      const payload = {
         creatorId: resolvedCreator.id,
         brandId: resolvedBrand.id,
         brandName: resolvedBrand.name,
@@ -738,7 +862,12 @@ export function AddDealModal({
         status,
         dueDate,
         notes: notes.trim(),
-      });
+      };
+      if (isEdit && initialDeal && onUpdateDeal) {
+        await onUpdateDeal(initialDeal.id, payload);
+      } else {
+        await onCreateDeal(payload);
+      }
       setCreatorName("");
       setSelectedCreatorId("");
       setBrandName("");
@@ -747,7 +876,13 @@ export function AddDealModal({
       setNotes("");
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create deal");
+      setError(
+        err instanceof Error
+          ? err.message
+          : isEdit
+            ? "Failed to update deal"
+            : "Failed to create deal"
+      );
     } finally {
       setSubmitting(false);
     }
@@ -758,7 +893,7 @@ export function AddDealModal({
       <div className="cm-card my-8 w-full max-w-lg rounded-2xl p-6">
         <div className="flex items-center justify-between border-b border-[var(--border)] pb-3">
           <h2 className="text-base font-bold text-[var(--text)]">
-            Add Brand Deal
+            {isEdit ? "Edit Brand Deal" : "Add Brand Deal"}
           </h2>
           <button
             type="button"
@@ -937,7 +1072,9 @@ export function AddDealModal({
                 ? "Saving..."
                 : status === "Paid"
                   ? "Save as Paid"
-                  : "Save Deal"}
+                  : isEdit
+                    ? "Update Deal"
+                    : "Save Deal"}
             </button>
           </div>
         </form>
@@ -1159,6 +1296,219 @@ export function ConfirmPaidModal({
             <span>{isSubmitting ? "Marking Paid..." : "Confirm & Mark Paid"}</span>
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+interface ConfirmClearDatabaseModalProps {
+  open: boolean;
+  isSubmitting: boolean;
+  onCancel: () => void;
+  onConfirm: () => Promise<void>;
+}
+
+export function ConfirmClearDatabaseModal({
+  open,
+  isSubmitting,
+  onCancel,
+  onConfirm,
+}: ConfirmClearDatabaseModalProps) {
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4 backdrop-blur-xs">
+      <div className="cm-card w-full max-w-md rounded-2xl p-6">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full"
+              style={{
+                backgroundColor: "var(--error-bg)",
+                color: "var(--error-text)",
+              }}
+            >
+              <Trash2 className="h-4 w-4" />
+            </div>
+            <div>
+              <h2 className="text-base font-bold text-[var(--text)]">
+                Delete Entire Database?
+              </h2>
+              <p className="text-xs text-[var(--text-muted)]">
+                This action clears all stored workspace records.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={isSubmitting}
+            className="rounded-full p-1 text-[var(--text-muted)] hover:bg-[var(--surface-chip)]"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div
+          className="mt-4 rounded-xl px-3.5 py-3 text-xs leading-relaxed"
+          style={{
+            backgroundColor: "var(--error-bg)",
+            color: "var(--error-text)",
+          }}
+        >
+          All <strong>creators</strong>, <strong>brands</strong>,{" "}
+          <strong>deals</strong> (including Paid records), and notification logs
+          will be permanently deleted from Supabase. Notification channel
+          settings will remain saved.
+        </div>
+
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={isSubmitting}
+            className="cm-btn-secondary rounded-full px-4 py-2 text-xs font-semibold disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={isSubmitting}
+            className="inline-flex items-center gap-1.5 rounded-full bg-rose-600 px-5 py-2 text-xs font-semibold text-white transition-colors hover:bg-rose-700 disabled:opacity-50"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            <span>{isSubmitting ? "Deleting..." : "Delete Database"}</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export interface DeleteApprovalTarget {
+  entityType: "deal" | "creator" | "brand";
+  entityId: string;
+  label: string;
+  detail: string;
+}
+
+interface RequestDeleteApprovalModalProps {
+  target: DeleteApprovalTarget | null;
+  onCancel: () => void;
+  onSubmitRequest: (target: DeleteApprovalTarget, reason: string) => void;
+}
+
+export function RequestDeleteApprovalModal({
+  target,
+  onCancel,
+  onSubmitRequest,
+}: RequestDeleteApprovalModalProps) {
+  const [reason, setReason] = useState("");
+  const [error, setError] = useState("");
+
+  if (!target) return null;
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!reason.trim()) {
+      setError("Please enter a short reason for Admin review.");
+      return;
+    }
+    onSubmitRequest(target, reason.trim());
+    setReason("");
+    setError("");
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4 backdrop-blur-xs">
+      <div className="cm-card w-full max-w-md rounded-2xl p-6">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full"
+              style={{
+                backgroundColor: "var(--status-pending-bg)",
+                color: "var(--status-pending-text)",
+              }}
+            >
+              <ShieldAlert className="h-4 w-4" />
+            </div>
+            <div>
+              <h2 className="text-base font-bold text-[var(--text)]">
+                Request Delete Approval
+              </h2>
+              <p className="text-xs text-[var(--text-muted)]">
+                {target.label} · {target.detail}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onCancel}
+            className="rounded-full p-1 text-[var(--text-muted)] hover:bg-[var(--surface-chip)]"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div
+          className="mt-4 rounded-xl px-3.5 py-3 text-xs leading-relaxed"
+          style={{
+            backgroundColor: "var(--status-pending-bg)",
+            color: "var(--status-pending-text)",
+          }}
+        >
+          <strong>Role safeguard:</strong> Managers cannot directly delete{" "}
+          {target.entityType} records. Submit a deletion request below—an Admin
+          or Director must approve it in the review queue before the record is
+          removed.
+        </div>
+
+        <form onSubmit={handleSubmit} className="mt-4 space-y-3">
+          {error && (
+            <p
+              className="rounded-xl px-3 py-2 text-xs font-medium"
+              style={{
+                backgroundColor: "var(--error-bg)",
+                color: "var(--error-text)",
+              }}
+            >
+              {error}
+            </p>
+          )}
+
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-[var(--text-muted)]">
+              Reason for Deletion *
+            </label>
+            <textarea
+              rows={2}
+              required
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="e.g. Duplicate entry or brand campaign cancelled before shoot"
+              className="cm-input w-full rounded-xl px-3 py-2 text-xs"
+            />
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2">
+            <button
+              type="button"
+              onClick={onCancel}
+              className="cm-btn-secondary rounded-full px-4 py-2 text-xs font-semibold"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="cm-btn-primary inline-flex items-center gap-1.5 rounded-full px-5 py-2 text-xs font-semibold"
+            >
+              <ShieldAlert className="h-3.5 w-3.5" />
+              <span>Submit for Admin Approval</span>
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );

@@ -1,7 +1,7 @@
 export type PlatformType = "Instagram" | "YouTube" | "Multi-platform";
 export type CreatorTier = "Exclusive" | "Roster" | "Network";
 export type DealStatus = "Pending" | "Confirmed" | "Paid";
-export type AutomationChannel = "slack" | "sheets" | "email" | "webhook";
+export type AutomationChannel = "slack" | "sheets" | "email";
 
 export interface CreatorDTO {
   id: string;
@@ -69,7 +69,6 @@ export interface AutomationChannelsConfig {
   slack: boolean;
   sheets: boolean;
   email: boolean;
-  webhook: boolean;
 }
 
 export interface AutomationConfigDTO {
@@ -79,15 +78,7 @@ export interface AutomationConfigDTO {
   channels: AutomationChannelsConfig;
   slackWebhookUrl: string;
   sheetsWebhookUrl: string;
-  customWebhookUrl: string;
   managerEmail: string;
-  useLoopbackTestSink: boolean;
-  envConfigured?: {
-    slack: boolean;
-    sheets: boolean;
-    email: boolean;
-    webhook: boolean;
-  };
   updatedAt: string;
 }
 
@@ -101,7 +92,7 @@ export interface AutomationLogDTO {
   previousStatus: string;
   newStatus: DealStatus;
   channel: AutomationChannel;
-  mode: "live" | "loopback" | "simulated";
+  mode: "live" | "simulated";
   status: "delivered" | "failed";
   httpStatus: number;
   latencyMs: number;

@@ -1,6 +1,6 @@
 # CreatorsMela · Collab Tracker
 
-A full-stack talent management and brand collaboration tracker built for **CreatorsMela** (`Product, Tech & Automation` hiring assignment), backed by **Supabase PostgreSQL** with both **REST** and **GraphQL** APIs and event-driven workflow automations.
+A full-stack talent management and brand collaboration tracker built for **CreatorsMela** (`Product, Tech & Automation` hiring assignment), backed by **Supabase PostgreSQL** with **REST APIs** and event-driven **Slack, Google Sheets, and Email** notifications.
 
 ---
 
@@ -8,11 +8,9 @@ A full-stack talent management and brand collaboration tracker built for **Creat
 
 - **Framework:** Next.js 16 (App Router, TypeScript)
 - **Styling:** Tailwind CSS v4 (Light & Dark mode) + Lucide Icons
-- **Database:** **Supabase PostgreSQL** (`creators`, `brands`, `deals`, `automation_configs`, `automation_logs` with relational foreign keys, check constraints, RLS policies, and a PostgreSQL trigger locking `Paid` deals)
-- **APIs:**
-  - **REST API** (`/api/creators`, `/api/brands`, `/api/deals`, `/api/dashboard`, `/api/automations`, `/api/seed`, `/api/health`) powered by Supabase PostgREST
-  - **GraphQL API** (`/api/graphql` powered by `graphql-js` + Supabase `pg_graphql` integration at `${NEXT_PUBLIC_SUPABASE_URL}/graphql/v1`)
-- **Automation Engine:** Server-side dispatcher supporting Slack Block Kit webhooks, Google Sheets row appends, Resend Email alerts, and HMAC-SHA256 signed outbound webhooks (plus a built-in loopback test receiver at `/api/automations/webhook-sink`).
+- **Database:** **Supabase PostgreSQL** (`creators`, `brands`, `deals`, `automation_configs`, `automation_logs` with relational foreign keys, check constraints, RLS policies, and a PostgreSQL trigger preventing status changes once a deal is `Paid`)
+- **REST APIs:** `/api/creators`, `/api/brands`, `/api/deals`, `/api/dashboard`, `/api/automations`, `/api/seed`, `/api/health` backed by Supabase PostgREST
+- **Notification Engine:** Server-side dispatcher supporting **Email** (direct Gmail/SMTP via `nodemailer`, Apps Script, or Resend), **Google Sheets** row appends (Google Apps Script Web App), and **Slack** Incoming Webhooks.
 
 ---
 
@@ -28,12 +26,15 @@ A full-stack talent management and brand collaboration tracker built for **Creat
    - **Immutable `Paid` Status Lock:** Choosing `Paid` opens a confirmation popup warning that `Paid` is permanent; once marked `Paid`, status changes are blocked in the UI, REST/GraphQL API (`HTTP 409`), and PostgreSQL trigger (`prevent_paid_deal_status_change`).
 
 3. **Interactive Kanban Pipeline (`Pipeline`)**
-   - Three-stage board (`Pending` → `Confirmed` → `Paid`) with column deal totals and instant automation execution.
+   - Three-stage board (`Pending` → `Confirmed` → `Paid`) with column deal totals and automatic notifications.
 
-4. **Automation Hub & Activity Log (`Automations`)**
-   - Configure triggers (`On Confirmed`, `On Paid`), toggle channels (`Slack`, `Google Sheets`, `Signed Webhook`, `Email`), save live webhook URLs, run manual tests, and inspect dispatched JSON payloads.
+4. **Analytics (`Analytics`)**
+   - Real-data charts for monthly pipeline & payout trends, stage breakdown, top creators, brand partners, industry sectors, and commission/TDS splits.
 
-5. **Printable Deal Payout Sheet & CSV Export**
+5. **Notifications (`Notifications`)**
+   - Configure triggers (`Confirmed`, `Paid`), select channels (`Email`, `Google Sheet`, `Slack`), customize destination fields, and send test notifications.
+
+6. **Printable Deal Payout Sheet & CSV Export**
    - Export filtered deals to CSV or open a printable **Deal Payout Sheet** showing Gross Value, Agency Fee (%), Net Creator Payout, and estimated 10% TDS u/s 194J.
 
 ---
@@ -59,11 +60,10 @@ NEXT_PUBLIC_SUPABASE_URL=https://your-project-ref.supabase.co
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_your-key
 ```
 
-*(Optional)* Add live automation targets in `.env.local` or directly in the **Automations** tab:
+*(Optional)* Add live notification targets in `.env.local` or in the **Notifications** tab:
 - `SLACK_WEBHOOK_URL` — Incoming Slack webhook URL
-- `GOOGLE_SHEETS_WEBHOOK_URL` — Google Apps Script Web App / Zapier / Make webhook URL
-- `CUSTOM_WEBHOOK_URL` — Custom HTTP endpoint for signed events
-- `RESEND_API_KEY` + `TALENT_MANAGER_EMAIL` — Live email delivery via Resend
+- `GOOGLE_SHEETS_WEBHOOK_URL` — Google Apps Script Web App URL to append Google Sheet rows
+- `GMAIL_USER` + `GMAIL_APP_PASSWORD` (or `EMAIL_WEBHOOK_URL` / `RESEND_API_KEY`) — Live email delivery
 
 ### 3. Install & Run
 
@@ -166,15 +166,12 @@ rest_endpoints:
             mode: simulated
             httpStatus: 200
           - channel: sheets
-            mode: simulated
-            httpStatus: 200
-          - channel: webhook
-            mode: loopback
+            mode: live
             httpStatus: 200
 
   - method: PATCH
     path: /api/deals/{id}
-    description: Update deal status; triggers automations on Confirmed/Paid; rejects changes to Paid deals
+    description: Update deal status; triggers notifications on Confirmed/Paid; rejects changes to Paid deals
     request:
       status: Paid
     responses:
@@ -188,92 +185,28 @@ rest_endpoints:
             httpStatus: 200
             summary: "Slack Block Kit alert formatted for #deals-ops"
       409:
-        error: "Paid deals are locked and their status cannot be changed."
+        error: "Deals marked as Paid cannot change status."
 
   - method: GET / PUT
     path: /api/automations
-    description: Read or update automation channel toggles and webhook URLs
+    description: Read or update notification channel toggles and destination fields
 
   - method: POST
     path: /api/automations/test
-    description: Dispatch a manual test run across enabled automation channels
-
-  - method: POST
-    path: /api/automations/webhook-sink
-    description: Built-in loopback receiver verifying X-CreatorsMela-Signature HMAC-SHA256
+    description: Dispatch a manual test notification across enabled channels
 
   - method: POST
     path: /api/seed
-    description: Seed sample CreatorsMela creators, brands, deals, and logs
-```
+    description: Reset and seed sample CreatorsMela creators, brands, and 6-month deals
 
-### GraphQL Endpoint (`/api/graphql` & Supabase `pg_graphql`)
-
-```yaml
-graphql_endpoint:
-  url: POST /api/graphql
-  schema_info: GET /api/graphql
-  supabase_native_pg_graphql: "${NEXT_PUBLIC_SUPABASE_URL}/graphql/v1"
-
-  sample_query:
-    request:
-      query: |
-        query PaidDeals {
-          deals(status: "Paid") {
-            id
-            brandName
-            creatorName
-            dealValue
-            status
-          }
-        }
-    response:
-      data:
-        deals:
-          - id: "d1e3b4a0-8f22-41af-98d4-99f847021c01"
-            brandName: Lenskart
-            creatorName: Hemant Show
-            dealValue: 480000
-            status: Paid
-
-  sample_mutation:
-    request:
-      query: |
-        mutation MarkDealPaid($id: ID!) {
-          updateDealStatus(id: $id, status: "Paid") {
-            deal {
-              id
-              brandName
-              status
-            }
-            automationsTriggered {
-              channel
-              mode
-              httpStatus
-            }
-          }
-        }
-      variables:
-        id: "d1e3b4a0-8f22-41af-98d4-99f847021c01"
-    response:
-      data:
-        updateDealStatus:
-          deal:
-            id: "d1e3b4a0-8f22-41af-98d4-99f847021c01"
-            brandName: Lenskart
-            status: Paid
-          automationsTriggered:
-            - channel: slack
-              mode: simulated
-              httpStatus: 200
-            - channel: webhook
-              mode: loopback
-              httpStatus: 200
+  - method: DELETE
+    path: /api/seed
+    description: Delete all creators, brands, deals, and logs from the database
 ```
 
 ---
 
-## Automation Design: Thinking & Architecture
+## Notification Design: Thinking & Architecture
 
 ### Why I Chose the `Pending → Confirmed` & `Confirmed → Paid` Triggers
 
@@ -281,9 +214,9 @@ In a creator economy agency, deals stay in `Pending` during rate negotiation and
 
 1. **`Pending → Confirmed` (Production & Brand Invoice Handoff):**
    - Commercials are locked. Talent ops needs to brief the creator, production locks shoot dates, and finance prepares the brand invoice.
-   - Fires a Slack Block Kit message, appends a Google Sheet row, and emits a signed webhook (`deal.status.confirmed`).
+   - Fires a Slack Block Kit alert, appends a Google Sheet row, and sends a manager email notification.
 2. **`Confirmed → Paid` (Settlement & Creator Payout Handoff):**
-   - Brand payment is settled. Status is permanently locked in Postgres (`trg_deals_paid_lock`) and payout notifications trigger so creator remittance happens promptly.
+   - Brand payment is settled. Status becomes permanent (`Paid` cannot be modified in the UI, REST API, or Postgres trigger `trg_deals_paid_lock`) and payout notifications trigger so creator remittance happens promptly.
 
 ### What I Would Automate Next in a Real Internal Tool (IRIS)
 

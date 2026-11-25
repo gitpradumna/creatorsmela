@@ -21,6 +21,8 @@ export async function PATCH(
   }
 }
 
+export { PATCH as PUT };
+
 export async function DELETE(
   _req: NextRequest,
   context: { params: Promise<{ id: string }> }
@@ -33,9 +35,8 @@ export async function DELETE(
     }
     return NextResponse.json({ deleted: true });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to delete creator" },
-      { status: 500 }
-    );
+    const msg = error instanceof Error ? error.message : "Failed to delete creator";
+    const statusCode = msg.includes("Paid deals") ? 409 : 500;
+    return NextResponse.json({ error: msg }, { status: statusCode });
   }
 }

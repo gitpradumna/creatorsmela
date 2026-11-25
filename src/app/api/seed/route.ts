@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { seedCreatorsMelaData } from "@/lib/store";
+import { clearDatabaseData, seedCreatorsMelaData } from "@/lib/store";
 
 export async function POST(req: NextRequest) {
   try {
@@ -11,6 +11,21 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         error: error instanceof Error ? error.message : "Failed to seed database",
+      },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE() {
+  try {
+    const result = await clearDatabaseData();
+    return NextResponse.json(result);
+  } catch (error) {
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error ? error.message : "Failed to clear database",
       },
       { status: 500 }
     );

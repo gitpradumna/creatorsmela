@@ -20,22 +20,21 @@ export async function PATCH(
       );
     }
 
-    if (body.status !== undefined) {
-      const existing = await getDealById(id);
-      if (!existing) {
-        return NextResponse.json({ error: "Deal not found" }, { status: 404 });
-      }
-      if (existing.status === "Paid" && body.status !== "Paid") {
-        return NextResponse.json(
-          { error: "Deals marked as Paid cannot change status." },
-          { status: 409 }
-        );
-      }
+    const existing = await getDealById(id);
+    if (!existing) {
+      return NextResponse.json({ error: "Deal not found" }, { status: 404 });
+    }
+    if (existing.status === "Paid") {
+      return NextResponse.json(
+        { error: "Paid deals cannot be edited or have their status changed." },
+        { status: 409 }
+      );
     }
 
     const patch: Record<string, unknown> = {};
     const allowedFields = [
       "creatorId",
+      "brandId",
       "brandName",
       "brandSector",
       "campaignTitle",
@@ -63,12 +62,10 @@ export async function PATCH(
     if (previous.status !== updated.status) {
       const creator = await getCreatorById(updated.creatorId);
       if (creator) {
-        const origin = new URL(req.url).origin;
         automationsTriggered = await dispatchDealAutomations({
           deal: updated,
           creator,
           previousStatus: previous.status,
-          requestOrigin: origin,
         });
 
         if (automationsTriggered.length > 0) {
@@ -86,10 +83,13 @@ export async function PATCH(
     const msg = error instanceof Error ? error.message : "Failed to update deal";
     const statusCode =
       msg.includes("cannot change status") ||
+      msg.includes("cannot be edited") ||
       msg.includes("cannot be changed") ||
       msg.includes("locked")
         ? 409
-        : 500;
+        : msg.includes("not registered") || msg.includes("not found")
+          ? 400
+          : 500;
     return NextResponse.json({ error: msg }, { status: statusCode });
   }
 }
@@ -108,9 +108,8 @@ export async function DELETE(
     }
     return NextResponse.json({ deleted: true });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to delete deal" },
-      { status: 500 }
-    );
+    const msg = error instanceof Error ? error.message : "Failed to delete deal";
+    const statusCode = msg.includes("cannot be deleted") ? 409 : 500;
+    return NextResponse.json({ error: msg }, { status: statusCode });
   }
 }
