@@ -1,22 +1,15 @@
 "use client";
 
-import { CheckCircle2, Clock, Flame, Zap } from "lucide-react";
+import { CheckCircle2, Clock, Flame, Users } from "lucide-react";
 import { formatINR } from "@/lib/format";
 import type { DashboardMetrics } from "@/types/collab";
 
 interface HeroOverviewProps {
   metrics: DashboardMetrics;
-  apiTransport: "rest" | "graphql";
-  onToggleTransport: () => void;
-  onGoToAutomations: () => void;
+  brandsCount: number;
 }
 
-export function HeroOverview({
-  metrics,
-  apiTransport,
-  onToggleTransport,
-  onGoToAutomations,
-}: HeroOverviewProps) {
+export function HeroOverview({ metrics, brandsCount }: HeroOverviewProps) {
   return (
     <section className="space-y-4">
       {/* Compact Header */}
@@ -35,14 +28,9 @@ export function HeroOverview({
             ★ {metrics.conversionRate}% closed
           </span>
         </div>
-        <button
-          type="button"
-          onClick={onToggleTransport}
-          title="Click to switch live API transport between REST and GraphQL"
-          className="cm-pill-brand inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-semibold transition-opacity hover:opacity-90"
-        >
-          <span>Supabase Postgres · {apiTransport === "graphql" ? "GraphQL" : "REST"}</span>
-        </button>
+        <span className="cm-pill-brand rounded-full px-3 py-1 text-[11px] font-semibold">
+          Talent Manager Workspace
+        </span>
       </div>
 
       {/* Horizontal Feature-Style Stat Cards */}
@@ -56,7 +44,7 @@ export function HeroOverview({
               {formatINR(metrics.totalPipelineValue, true)}
             </p>
             <p className="truncate text-[11px] text-[var(--text-muted)]">
-              {metrics.totalDeals} deals · {metrics.totalCreators} creators
+              {metrics.totalDeals} deals · Total Pipeline
             </p>
           </div>
         </div>
@@ -101,23 +89,20 @@ export function HeroOverview({
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={onGoToAutomations}
-          className="cm-card flex items-center gap-3 rounded-2xl p-3.5 text-left transition-colors hover:border-[var(--accent)]"
-        >
+        <div className="cm-card flex items-center gap-3 rounded-2xl p-3.5">
           <div className="cm-pill-brand flex h-9 w-9 shrink-0 items-center justify-center rounded-xl">
-            <Zap className="h-4 w-4" />
+            <Users className="h-4 w-4" />
           </div>
           <div className="min-w-0">
-            <p className="text-sm font-bold text-[var(--accent-text)] cm-tabular">
-              {metrics.automationsFiredCount} Fired
+            <p className="text-sm font-bold text-[var(--text)] cm-tabular">
+              {metrics.totalCreators}{" "}
+              {metrics.totalCreators === 1 ? "Creator" : "Creators"}
             </p>
             <p className="truncate text-[11px] text-[var(--text-muted)]">
-              Automations log ›
+              {brandsCount} registered {brandsCount === 1 ? "brand" : "brands"}
             </p>
           </div>
-        </button>
+        </div>
       </div>
     </section>
   );

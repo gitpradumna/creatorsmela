@@ -1,7 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import { Building2, Check, Copy, Lock, Printer, X, Zap } from "lucide-react";
+import {
+  Building2,
+  Check,
+  CheckCircle2,
+  Copy,
+  Plus,
+  Printer,
+  X,
+  Zap,
+} from "lucide-react";
 import { DealStatusBadge } from "@/components/StatusBadge";
 import {
   calculateSplit,
@@ -10,7 +19,9 @@ import {
   formatRelativeDate,
 } from "@/lib/format";
 import type {
+  BrandDTO,
   BrandWithStatsDTO,
+  CreatorDTO,
   CreatorTier,
   CreatorWithDealsDTO,
   DealDTO,
@@ -20,6 +31,8 @@ import type {
 
 interface AddCreatorModalProps {
   open: boolean;
+  defaultName?: string;
+  stacked?: boolean;
   onClose: () => void;
   onCreate: (payload: {
     name: string;
@@ -31,15 +44,17 @@ interface AddCreatorModalProps {
     baseRate: number;
     managerName: string;
     tier: CreatorTier;
-  }) => Promise<void>;
+  }) => Promise<CreatorDTO>;
 }
 
 export function AddCreatorModal({
   open,
+  defaultName = "",
+  stacked = false,
   onClose,
   onCreate,
 }: AddCreatorModalProps) {
-  const [name, setName] = useState("");
+  const [name, setName] = useState(defaultName);
   const [handle, setHandle] = useState("");
   const [platform, setPlatform] = useState<PlatformType>("Multi-platform");
   const [niche, setNiche] = useState("");
@@ -85,7 +100,11 @@ export function AddCreatorModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs">
+    <div
+      className={`fixed inset-0 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs ${
+        stacked ? "z-[60]" : "z-50"
+      }`}
+    >
       <div className="cm-card w-full max-w-md rounded-2xl p-6">
         <div className="flex items-center justify-between border-b border-[var(--border)] pb-3">
           <h2 className="text-base font-bold text-[var(--text)]">
@@ -218,6 +237,8 @@ export function AddCreatorModal({
 
 interface AddBrandModalProps {
   open: boolean;
+  defaultName?: string;
+  stacked?: boolean;
   onClose: () => void;
   onCreate: (payload: {
     name: string;
@@ -226,11 +247,17 @@ interface AddBrandModalProps {
     contactEmail: string;
     website: string;
     notes: string;
-  }) => Promise<void>;
+  }) => Promise<BrandDTO>;
 }
 
-export function AddBrandModal({ open, onClose, onCreate }: AddBrandModalProps) {
-  const [name, setName] = useState("");
+export function AddBrandModal({
+  open,
+  defaultName = "",
+  stacked = false,
+  onClose,
+  onCreate,
+}: AddBrandModalProps) {
+  const [name, setName] = useState(defaultName);
   const [sector, setSector] = useState("CONSUMER");
   const [contactName, setContactName] = useState("");
   const [contactEmail, setContactEmail] = useState("");
@@ -274,7 +301,11 @@ export function AddBrandModal({ open, onClose, onCreate }: AddBrandModalProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs">
+    <div
+      className={`fixed inset-0 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs ${
+        stacked ? "z-[60]" : "z-50"
+      }`}
+    >
       <div className="cm-card w-full max-w-md rounded-2xl p-6">
         <div className="flex items-center justify-between border-b border-[var(--border)] pb-3">
           <div className="flex items-center gap-2">
@@ -405,6 +436,163 @@ export function AddBrandModal({ open, onClose, onCreate }: AddBrandModalProps) {
   );
 }
 
+interface EntityTypeaheadOption {
+  id: string;
+  name: string;
+  meta: string;
+  searchableText?: string;
+}
+
+interface EntityTypeaheadFieldProps {
+  label: string;
+  placeholder: string;
+  value: string;
+  selectedId: string;
+  options: EntityTypeaheadOption[];
+  emptyText: string;
+  onInputChange: (nextValue: string) => void;
+  onSelect: (option: EntityTypeaheadOption) => void;
+  onRequestRegister: (typedName: string) => void;
+}
+
+/** Shared typeahead input for registered Creators and Brands with inline popup creation link. */
+function EntityTypeaheadField({
+  label,
+  placeholder,
+  value,
+  selectedId,
+  options,
+  emptyText,
+  onInputChange,
+  onSelect,
+  onRequestRegister,
+}: EntityTypeaheadFieldProps) {
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [highlightedIdx, setHighlightedIdx] = useState(-1);
+
+  const trimmed = value.trim();
+  const query = trimmed.toLowerCase();
+  const matching = options.filter((item) => {
+    if (!query) return true;
+    const target = `${item.name} ${item.searchableText ?? item.meta}`.toLowerCase();
+    return target.includes(query);
+  });
+  const hasExactMatch = options.some(
+    (item) => item.name.toLowerCase() === query
+  );
+
+  const pickOption = (option: EntityTypeaheadOption) => {
+    onSelect(option);
+    setShowSuggestions(false);
+    setHighlightedIdx(-1);
+  };
+
+  return (
+    <div className="relative">
+      <div className="mb-1 flex items-center justify-between">
+        <label className="block text-xs font-semibold text-[var(--text-muted)]">
+          {label}
+        </label>
+        {selectedId && (
+          <span className="cm-pill-brand rounded-full px-2 py-0.2 text-[10px] font-semibold">
+            Registered
+          </span>
+        )}
+      </div>
+      <input
+        required
+        autoComplete="off"
+        value={value}
+        onFocus={() => setShowSuggestions(true)}
+        onBlur={() => {
+          // Delay so click on suggestion or "+ Register" link fires before closing
+          setTimeout(() => setShowSuggestions(false), 160);
+        }}
+        onChange={(e) => {
+          onInputChange(e.target.value);
+          setShowSuggestions(true);
+          setHighlightedIdx(-1);
+        }}
+        onKeyDown={(e) => {
+          if (!showSuggestions || matching.length === 0) return;
+          if (e.key === "ArrowDown") {
+            e.preventDefault();
+            setHighlightedIdx((prev) =>
+              prev < matching.length - 1 ? prev + 1 : 0
+            );
+          } else if (e.key === "ArrowUp") {
+            e.preventDefault();
+            setHighlightedIdx((prev) =>
+              prev > 0 ? prev - 1 : matching.length - 1
+            );
+          } else if (e.key === "Enter" && highlightedIdx >= 0) {
+            e.preventDefault();
+            pickOption(matching[highlightedIdx]);
+          } else if (e.key === "Escape") {
+            setShowSuggestions(false);
+          }
+        }}
+        placeholder={placeholder}
+        className="cm-input w-full rounded-xl px-3 py-2 text-xs"
+      />
+
+      {showSuggestions && (
+        <div className="cm-card absolute left-0 right-0 top-full z-30 mt-1.5 max-h-56 overflow-y-auto rounded-xl p-1 shadow-xl">
+          {matching.length > 0 ? (
+            matching.map((item, idx) => (
+              <button
+                key={item.id}
+                type="button"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  pickOption(item);
+                }}
+                className={`flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-left text-xs transition-colors ${
+                  highlightedIdx === idx
+                    ? "bg-[var(--accent-soft)] text-[var(--accent-text)]"
+                    : "hover:bg-[var(--surface-hover)] text-[var(--text)]"
+                }`}
+              >
+                <div className="min-w-0">
+                  <p className="truncate font-semibold">{item.name}</p>
+                  <p className="truncate text-[10px] text-[var(--text-muted)]">
+                    {item.meta}
+                  </p>
+                </div>
+                <span className="cm-pill-brand shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold">
+                  Select
+                </span>
+              </button>
+            ))
+          ) : (
+            <div className="px-2.5 py-2 text-[11px] text-[var(--text-muted)]">
+              {emptyText}
+            </div>
+          )}
+
+          {trimmed.length > 0 && !hasExactMatch && (
+            <button
+              type="button"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                setShowSuggestions(false);
+                setHighlightedIdx(-1);
+                onRequestRegister(trimmed);
+              }}
+              className="mt-1 flex w-full items-center gap-1.5 rounded-lg border-t border-[var(--border)] px-2.5 py-2 text-left text-[11px] font-semibold text-[var(--accent-text)] transition-colors hover:bg-[var(--accent-soft)]"
+            >
+              <Plus className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate">
+                Register &ldquo;{trimmed}&rdquo;
+              </span>
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface AddDealModalProps {
   open: boolean;
   creators: CreatorWithDealsDTO[];
@@ -413,9 +601,10 @@ interface AddDealModalProps {
   defaultBrandName?: string;
   defaultBrandId?: string;
   onClose: () => void;
+  onRequestRegisterCreator: (typedName: string) => Promise<CreatorDTO | null>;
+  onRequestRegisterBrand: (typedName: string) => Promise<BrandDTO | null>;
   onCreateDeal: (payload: {
     creatorId: string;
-    newCreator?: { name: string; niche: string; followerCount: number };
     brandId?: string;
     brandName: string;
     brandSector: string;
@@ -437,17 +626,17 @@ export function AddDealModal({
   defaultBrandName = "",
   defaultBrandId = "",
   onClose,
+  onRequestRegisterCreator,
+  onRequestRegisterBrand,
   onCreateDeal,
 }: AddDealModalProps) {
-  const [creatorMode, setCreatorMode] = useState<"existing" | "new">(
-    creators.length === 0 ? "new" : "existing"
+  const initialCreator = defaultCreatorId
+    ? creators.find((c) => c.id === defaultCreatorId)
+    : undefined;
+  const [creatorName, setCreatorName] = useState(initialCreator?.name || "");
+  const [selectedCreatorId, setSelectedCreatorId] = useState(
+    initialCreator?.id || ""
   );
-  const [creatorId, setCreatorId] = useState(
-    defaultCreatorId || creators[0]?.id || ""
-  );
-  const [newCreatorName, setNewCreatorName] = useState("");
-  const [newCreatorNiche, setNewCreatorNiche] = useState("");
-  const [newCreatorFollowers, setNewCreatorFollowers] = useState("");
 
   const [brandName, setBrandName] = useState(defaultBrandName);
   const [selectedBrandId, setSelectedBrandId] = useState(defaultBrandId);
@@ -455,8 +644,6 @@ export function AddDealModal({
     if (!defaultBrandId) return "COLLAB";
     return brands.find((b) => b.id === defaultBrandId)?.sector || "COLLAB";
   });
-  const [showBrandSuggestions, setShowBrandSuggestions] = useState(false);
-  const [highlightedIdx, setHighlightedIdx] = useState(-1);
 
   const [deliverables, setDeliverables] = useState("1 IG Reel + 2 Stories");
   const [dealValue, setDealValue] = useState("");
@@ -469,74 +656,82 @@ export function AddDealModal({
 
   if (!open) return null;
 
-  const selectedCreatorId = creatorId || creators[0]?.id || "";
-  const effectiveMode = creators.length === 0 ? "new" : creatorMode;
+  const creatorOptions: EntityTypeaheadOption[] = creators.map((c) => ({
+    id: c.id,
+    name: c.name,
+    meta: `${c.niche} · ${formatFollowers(c.followerCount)}`,
+    searchableText: `${c.niche} ${c.handle}`,
+  }));
 
-  const brandQuery = brandName.trim().toLowerCase();
-  const matchingBrands = brands.filter((b) => {
-    if (!brandQuery) return true;
-    return (
-      b.name.toLowerCase().includes(brandQuery) ||
-      b.sector.toLowerCase().includes(brandQuery)
-    );
-  });
-  const hasExactMatch = brands.some(
-    (b) => b.name.toLowerCase() === brandQuery
-  );
+  const brandOptions: EntityTypeaheadOption[] = brands.map((b) => ({
+    id: b.id,
+    name: b.name,
+    meta: `${b.sector} · ${b.dealsCount} ${b.dealsCount === 1 ? "deal" : "deals"}`,
+    searchableText: b.sector,
+  }));
 
-  const selectBrand = (brand: BrandWithStatsDTO) => {
-    setBrandName(brand.name);
-    setSelectedBrandId(brand.id);
-    setBrandSector(brand.sector || "COLLAB");
-    setShowBrandSuggestions(false);
-    setHighlightedIdx(-1);
+  const handleQuickRegisterCreator = async (typedName: string) => {
+    const created = await onRequestRegisterCreator(typedName);
+    if (created) {
+      setCreatorName(created.name);
+      setSelectedCreatorId(created.id);
+      setError("");
+    }
+  };
+
+  const handleQuickRegisterBrand = async (typedName: string) => {
+    const created = await onRequestRegisterBrand(typedName);
+    if (created) {
+      setBrandName(created.name);
+      setSelectedBrandId(created.id);
+      setBrandSector(created.sector || "COLLAB");
+      setError("");
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     const val = Number(dealValue);
-    if (!brandName.trim() || !Number.isFinite(val) || val < 0) {
-      setError("Brand name and valid deal value are required.");
+    if (!creatorName.trim() || !brandName.trim() || !Number.isFinite(val) || val < 0) {
+      setError("Creator name, brand name, and valid deal value are required.");
       return;
     }
 
-    if (effectiveMode === "new") {
-      const followers = Number(newCreatorFollowers);
-      if (
-        !newCreatorName.trim() ||
-        !newCreatorNiche.trim() ||
-        !Number.isFinite(followers) ||
-        followers < 0
-      ) {
-        setError("New creator name, niche, and follower count are required.");
-        return;
-      }
-    } else if (!selectedCreatorId) {
-      setError("Please select a creator.");
+    const matchedCreatorByName = creators.find(
+      (c) => c.name.toLowerCase() === creatorName.trim().toLowerCase()
+    );
+    const resolvedCreator =
+      creators.find((c) => c.id === selectedCreatorId) || matchedCreatorByName;
+
+    if (!resolvedCreator) {
+      setError(
+        `Creator "${creatorName.trim()}" is not registered. Select a registered creator or click + Register.`
+      );
       return;
     }
 
-    const matchedByName = brands.find(
+    const matchedBrandByName = brands.find(
       (b) => b.name.toLowerCase() === brandName.trim().toLowerCase()
     );
+    const resolvedBrand =
+      brands.find((b) => b.id === selectedBrandId) || matchedBrandByName;
+
+    if (!resolvedBrand) {
+      setError(
+        `Brand "${brandName.trim()}" is not registered. Select a registered brand or click + Register.`
+      );
+      return;
+    }
 
     setSubmitting(true);
     try {
       await onCreateDeal({
-        creatorId: selectedCreatorId,
-        newCreator:
-          effectiveMode === "new"
-            ? {
-                name: newCreatorName.trim(),
-                niche: newCreatorNiche.trim(),
-                followerCount: Number(newCreatorFollowers),
-              }
-            : undefined,
-        brandId: selectedBrandId || matchedByName?.id || undefined,
-        brandName: matchedByName ? matchedByName.name : brandName.trim(),
-        brandSector: matchedByName?.sector || brandSector || "COLLAB",
-        campaignTitle: `${brandName.trim()} Collaboration`,
+        creatorId: resolvedCreator.id,
+        brandId: resolvedBrand.id,
+        brandName: resolvedBrand.name,
+        brandSector: resolvedBrand.sector || brandSector || "COLLAB",
+        campaignTitle: `${resolvedBrand.name} Collaboration`,
         deliverables: deliverables.trim() || "1 IG Reel + 2 Stories",
         dealValue: val,
         agencyFeePct: Number(agencyFeePct) || 15,
@@ -544,13 +739,12 @@ export function AddDealModal({
         dueDate,
         notes: notes.trim(),
       });
+      setCreatorName("");
+      setSelectedCreatorId("");
       setBrandName("");
       setSelectedBrandId("");
       setDealValue("");
       setNotes("");
-      setNewCreatorName("");
-      setNewCreatorNiche("");
-      setNewCreatorFollowers("");
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create deal");
@@ -588,180 +782,48 @@ export function AddDealModal({
             </p>
           )}
 
-          {/* Creator Selector or Inline New Creator */}
-          <div className="cm-card-subtle rounded-xl p-3">
-            <div className="mb-2 flex items-center justify-between">
-              <span className="text-xs font-semibold text-[var(--text-muted)]">
-                Creator
-              </span>
-              {creators.length > 0 && (
-                <div className="inline-flex rounded-full border border-[var(--border)] bg-[var(--surface)] p-0.5 text-[11px]">
-                  <button
-                    type="button"
-                    onClick={() => setCreatorMode("existing")}
-                    className={`rounded-full px-2.5 py-0.5 font-medium ${
-                      effectiveMode === "existing"
-                        ? "bg-[var(--accent)] text-white"
-                        : "text-[var(--text-muted)]"
-                    }`}
-                  >
-                    Existing
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setCreatorMode("new")}
-                    className={`rounded-full px-2.5 py-0.5 font-medium ${
-                      effectiveMode === "new"
-                        ? "bg-[var(--accent)] text-white"
-                        : "text-[var(--text-muted)]"
-                    }`}
-                  >
-                    + New Creator
-                  </button>
-                </div>
-              )}
-            </div>
+          {/* Uniform Creator & Brand Typeahead Inputs */}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <EntityTypeaheadField
+              label="Creator Name *"
+              placeholder="Type creator name (e.g. Tanmay)..."
+              value={creatorName}
+              selectedId={selectedCreatorId}
+              options={creatorOptions}
+              emptyText="No matching registered creator"
+              onInputChange={(nextValue) => {
+                setCreatorName(nextValue);
+                setSelectedCreatorId("");
+              }}
+              onSelect={(option) => {
+                setCreatorName(option.name);
+                setSelectedCreatorId(option.id);
+              }}
+              onRequestRegister={handleQuickRegisterCreator}
+            />
 
-            {effectiveMode === "existing" ? (
-              <select
-                value={selectedCreatorId}
-                onChange={(e) => setCreatorId(e.target.value)}
-                className="cm-input w-full rounded-xl px-3 py-2 text-xs"
-              >
-                {creators.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name} · {c.niche} ({formatFollowers(c.followerCount)})
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                <input
-                  value={newCreatorName}
-                  onChange={(e) => setNewCreatorName(e.target.value)}
-                  placeholder="Name *"
-                  className="cm-input rounded-xl px-3 py-2 text-xs"
-                />
-                <input
-                  value={newCreatorNiche}
-                  onChange={(e) => setNewCreatorNiche(e.target.value)}
-                  placeholder="Niche *"
-                  className="cm-input rounded-xl px-3 py-2 text-xs"
-                />
-                <input
-                  type="number"
-                  min={0}
-                  value={newCreatorFollowers}
-                  onChange={(e) => setNewCreatorFollowers(e.target.value)}
-                  placeholder="Followers *"
-                  className="cm-input rounded-xl px-3 py-2 text-xs cm-tabular"
-                />
-              </div>
-            )}
+            <EntityTypeaheadField
+              label="Brand Name *"
+              placeholder="Type brand name (e.g. Lenskart)..."
+              value={brandName}
+              selectedId={selectedBrandId}
+              options={brandOptions}
+              emptyText="No matching registered brand"
+              onInputChange={(nextValue) => {
+                setBrandName(nextValue);
+                setSelectedBrandId("");
+              }}
+              onSelect={(option) => {
+                const matched = brands.find((b) => b.id === option.id);
+                setBrandName(option.name);
+                setSelectedBrandId(option.id);
+                setBrandSector(matched?.sector || "COLLAB");
+              }}
+              onRequestRegister={handleQuickRegisterBrand}
+            />
           </div>
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {/* Brand Typeahead Input (Auto-appears below as you type) */}
-            <div className="relative">
-              <div className="mb-1 flex items-center justify-between">
-                <label className="block text-xs font-semibold text-[var(--text-muted)]">
-                  Brand Name *
-                </label>
-                {selectedBrandId && (
-                  <span className="cm-pill-brand rounded-full px-2 py-0.2 text-[10px] font-semibold">
-                    Registered
-                  </span>
-                )}
-              </div>
-              <input
-                required
-                autoComplete="off"
-                value={brandName}
-                onFocus={() => setShowBrandSuggestions(true)}
-                onBlur={() => {
-                  // Delay so click on suggestion item fires before close
-                  setTimeout(() => setShowBrandSuggestions(false), 160);
-                }}
-                onChange={(e) => {
-                  setBrandName(e.target.value);
-                  setSelectedBrandId("");
-                  setShowBrandSuggestions(true);
-                  setHighlightedIdx(-1);
-                }}
-                onKeyDown={(e) => {
-                  if (!showBrandSuggestions || matchingBrands.length === 0) return;
-                  if (e.key === "ArrowDown") {
-                    e.preventDefault();
-                    setHighlightedIdx((prev) =>
-                      prev < matchingBrands.length - 1 ? prev + 1 : 0
-                    );
-                  } else if (e.key === "ArrowUp") {
-                    e.preventDefault();
-                    setHighlightedIdx((prev) =>
-                      prev > 0 ? prev - 1 : matchingBrands.length - 1
-                    );
-                  } else if (e.key === "Enter" && highlightedIdx >= 0) {
-                    e.preventDefault();
-                    selectBrand(matchingBrands[highlightedIdx]);
-                  } else if (e.key === "Escape") {
-                    setShowBrandSuggestions(false);
-                  }
-                }}
-                placeholder="Type brand name (e.g. Lenskart)..."
-                className="cm-input w-full rounded-xl px-3 py-2 text-xs"
-              />
-
-              {showBrandSuggestions && (
-                <div className="cm-card absolute left-0 right-0 top-full z-30 mt-1.5 max-h-52 overflow-y-auto rounded-xl p-1 shadow-xl">
-                  {matchingBrands.length > 0 ? (
-                    matchingBrands.map((brand, idx) => (
-                      <button
-                        key={brand.id}
-                        type="button"
-                        onMouseDown={(e) => {
-                          e.preventDefault();
-                          selectBrand(brand);
-                        }}
-                        className={`flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-left text-xs transition-colors ${
-                          highlightedIdx === idx
-                            ? "bg-[var(--accent-soft)] text-[var(--accent-text)]"
-                            : "hover:bg-[var(--surface-hover)] text-[var(--text)]"
-                        }`}
-                      >
-                        <div className="min-w-0">
-                          <p className="truncate font-semibold">{brand.name}</p>
-                          <p className="text-[10px] text-[var(--text-muted)]">
-                            {brand.sector} · {brand.dealsCount}{" "}
-                            {brand.dealsCount === 1 ? "deal" : "deals"}
-                          </p>
-                        </div>
-                        <span className="cm-pill-brand shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold">
-                          Select
-                        </span>
-                      </button>
-                    ))
-                  ) : (
-                    <div className="px-2.5 py-2 text-[11px] text-[var(--text-muted)]">
-                      No matching registered brand
-                    </div>
-                  )}
-
-                  {brandName.trim().length >= 2 && !hasExactMatch && (
-                    <button
-                      type="button"
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        setShowBrandSuggestions(false);
-                      }}
-                      className="mt-1 flex w-full items-center justify-between border-t border-[var(--border)] px-2.5 py-2 text-left text-[11px] font-medium text-[var(--accent-text)] hover:bg-[var(--surface-hover)]"
-                    >
-                      <span>+ Auto-register &ldquo;{brandName.trim()}&rdquo;</span>
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-
             <div>
               <label className="mb-1 block text-xs font-semibold text-[var(--text-muted)]">
                 Deal Value (₹) *
@@ -774,6 +836,17 @@ export function AddDealModal({
                 onChange={(e) => setDealValue(e.target.value)}
                 placeholder="250000"
                 className="cm-input w-full rounded-xl px-3 py-2 text-xs cm-tabular"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-[var(--text-muted)]">
+                Deliverables
+              </label>
+              <input
+                value={deliverables}
+                onChange={(e) => setDeliverables(e.target.value)}
+                placeholder="1 IG Reel + 2 Stories"
+                className="cm-input w-full rounded-xl px-3 py-2 text-xs"
               />
             </div>
           </div>
@@ -822,29 +895,17 @@ export function AddDealModal({
           {(status === "Confirmed" || status === "Paid") && (
             <div className="cm-pill-brand flex items-start gap-2 rounded-xl px-3 py-2.5 text-xs font-medium">
               {status === "Paid" ? (
-                <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
               ) : (
                 <Zap className="mt-0.5 h-3.5 w-3.5 shrink-0" />
               )}
               <span>
                 {status === "Paid"
-                  ? "Saving as Paid will permanently lock this deal's status (it cannot be changed later) and trigger automations."
-                  : "Saving as Confirmed will automatically trigger your enabled automations."}
+                  ? "Saving as Paid sets a final status (it cannot be changed later) and triggers enabled notifications."
+                  : "Saving as Confirmed will automatically trigger your enabled notifications."}
               </span>
             </div>
           )}
-
-          <div>
-            <label className="mb-1 block text-xs font-semibold text-[var(--text-muted)]">
-              Deliverables
-            </label>
-            <input
-              value={deliverables}
-              onChange={(e) => setDeliverables(e.target.value)}
-              placeholder="1 IG Reel + 2 Stories"
-              className="cm-input w-full rounded-xl px-3 py-2 text-xs"
-            />
-          </div>
 
           <div>
             <label className="mb-1 block text-xs font-semibold text-[var(--text-muted)]">
@@ -875,7 +936,7 @@ export function AddDealModal({
               {submitting
                 ? "Saving..."
                 : status === "Paid"
-                  ? "Save & Lock as Paid"
+                  ? "Save as Paid"
                   : "Save Deal"}
             </button>
           </div>
@@ -1044,7 +1105,7 @@ export function ConfirmPaidModal({
                 color: "var(--status-paid-soft-text)",
               }}
             >
-              <Lock className="h-4 w-4" />
+              <CheckCircle2 className="h-4 w-4" />
             </div>
             <div>
               <h2 className="text-base font-bold text-[var(--text)]">
@@ -1072,10 +1133,10 @@ export function ConfirmPaidModal({
             color: "var(--status-pending-text)",
           }}
         >
-          <strong>Permanent status lock:</strong> Once a deal is marked as{" "}
-          <strong>Paid</strong>, its status is locked and cannot be changed back
-          to Pending or Confirmed. Enabled payout automations will also run
-          immediately.
+          <strong>Final Paid status:</strong> Once a deal is marked as{" "}
+          <strong>Paid</strong>, its status cannot be changed back to Pending or
+          Confirmed from either the dashboard or the API. Enabled payout
+          notifications will also run immediately.
         </div>
 
         <div className="mt-5 flex justify-end gap-2">
@@ -1094,7 +1155,7 @@ export function ConfirmPaidModal({
             className="inline-flex items-center gap-1.5 rounded-full px-5 py-2 text-xs font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
             style={{ backgroundColor: "var(--status-paid-bg)" }}
           >
-            <Lock className="h-3.5 w-3.5" />
+            <CheckCircle2 className="h-3.5 w-3.5" />
             <span>{isSubmitting ? "Marking Paid..." : "Confirm & Mark Paid"}</span>
           </button>
         </div>

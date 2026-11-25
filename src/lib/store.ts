@@ -172,6 +172,16 @@ function mapConfigRow(row: AutomationConfigRow): AutomationConfigDTO {
     customWebhookUrl: row.custom_webhook_url || "",
     managerEmail: row.manager_email || "talent-ops@creatorsmela.com",
     useLoopbackTestSink: row.use_loopback_test_sink,
+    envConfigured: {
+      slack: Boolean(process.env.SLACK_WEBHOOK_URL?.trim()),
+      sheets: Boolean(process.env.GOOGLE_SHEETS_WEBHOOK_URL?.trim()),
+      email: Boolean(
+        (process.env.SMTP_USER?.trim() || process.env.GMAIL_USER?.trim()) &&
+          (process.env.SMTP_PASS?.trim() ||
+            process.env.GMAIL_APP_PASSWORD?.trim())
+      ) || Boolean(process.env.EMAIL_WEBHOOK_URL?.trim() || process.env.RESEND_API_KEY?.trim()),
+      webhook: Boolean(process.env.CUSTOM_WEBHOOK_URL?.trim()),
+    },
     updatedAt: row.updated_at,
   };
 }
@@ -373,6 +383,21 @@ export async function findBrandByName(name: string): Promise<BrandDTO | null> {
   return data ? mapBrandRow(data as BrandRow) : null;
 }
 
+export async function getBrandById(id: string): Promise<BrandDTO | null> {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from("brands")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (error) {
+    if (error.code === "22P02") return null;
+    throw new Error(error.message);
+  }
+  return data ? mapBrandRow(data as BrandRow) : null;
+}
+
 export async function createBrand(input: CreateBrandInput): Promise<BrandDTO> {
   const supabase = getSupabaseClient();
   const cleanName = input.name.trim();
@@ -489,24 +514,26 @@ export async function createDeal(input: CreateDealInput): Promise<DealDTO> {
   const supabase = getSupabaseClient();
   const creator = await getCreatorById(input.creatorId);
   if (!creator) {
-    throw new Error("Creator not found");
+    throw new Error("Creator not found. Please register the creator first.");
   }
 
-  let resolvedBrandId = input.brandId || null;
-  let resolvedBrandName = input.brandName.trim();
-  let resolvedSector = (input.brandSector || "COLLAB").trim().toUpperCase();
-
-  if (!resolvedBrandId && resolvedBrandName) {
-    const brandRecord = await createBrand({
-      name: resolvedBrandName,
-      sector: resolvedSector,
-    });
-    resolvedBrandId = brandRecord.id;
-    resolvedBrandName = brandRecord.name;
-    if (!input.brandSector) {
-      resolvedSector = brandRecord.sector;
-    }
+  let brandRecord: BrandDTO | null = null;
+  if (input.brandId) {
+    brandRecord = await getBrandById(input.brandId);
   }
+  if (!brandRecord && input.brandName.trim()) {
+    brandRecord = await findBrandByName(input.brandName);
+  }
+  if (!brandRecord) {
+    throw new Error(
+      `Brand "${input.brandName.trim()}" is not registered. Please register the brand first before creating a deal.`
+    );
+  }
+
+  const resolvedBrandId = brandRecord.id;
+  const resolvedBrandName = brandRecord.name;
+  const resolvedSector =
+    input.brandSector?.trim().toUpperCase() || brandRecord.sector || "COLLAB";
 
   const nowIso = new Date().toISOString();
   const status = input.status || "Pending";
@@ -564,7 +591,7 @@ export async function updateDeal(
 
   const nextStatus = patch.status ?? existing.status;
   if (existing.status === "Paid" && nextStatus !== "Paid") {
-    throw new Error("Paid deals are locked and their status cannot be changed.");
+    throw new Error("Deals marked as Paid cannot change status.");
   }
 
   const updateRow: Record<string, unknown> = {};
@@ -833,41 +860,42 @@ export async function getDashboardPayload(): Promise<DashboardPayload> {
   };
 }
 
-export async function seedCreatorsMelaData(force = false): Promise<{
+export async function seedCreatorsMelaData(force = true): Promise<{
   seeded: boolean;
   creatorsCreated: number;
   brandsCreated: number;
   dealsCreated: number;
 }> {
   const supabase = getSupabaseClient();
-  const existing = await listCreators();
-  if (existing.length > 0 && !force) {
-    return {
-      seeded: false,
-      creatorsCreated: 0,
-      brandsCreated: 0,
-      dealsCreated: 0,
-    };
+  if (!force) {
+    const existing = await listCreators();
+    if (existing.length > 0) {
+      return {
+        seeded: false,
+        creatorsCreated: 0,
+        brandsCreated: 0,
+        dealsCreated: 0,
+      };
+    }
   }
 
-  if (force) {
-    await supabase
-      .from("automation_logs")
-      .delete()
-      .neq("id", "00000000-0000-0000-0000-000000000000");
-    await supabase
-      .from("deals")
-      .delete()
-      .neq("id", "00000000-0000-0000-0000-000000000000");
-    await supabase
-      .from("brands")
-      .delete()
-      .neq("id", "00000000-0000-0000-0000-000000000000");
-    await supabase
-      .from("creators")
-      .delete()
-      .neq("id", "00000000-0000-0000-0000-000000000000");
-  }
+  // Clean up all tables in dependency order before creating fresh sample data
+  await supabase
+    .from("automation_logs")
+    .delete()
+    .neq("id", "00000000-0000-0000-0000-000000000000");
+  await supabase
+    .from("deals")
+    .delete()
+    .neq("id", "00000000-0000-0000-0000-000000000000");
+  await supabase
+    .from("brands")
+    .delete()
+    .neq("id", "00000000-0000-0000-0000-000000000000");
+  await supabase
+    .from("creators")
+    .delete()
+    .neq("id", "00000000-0000-0000-0000-000000000000");
 
   const creatorIdByName = new Map<string, string>();
   for (const c of SEED_CREATORS) {
@@ -886,8 +914,8 @@ export async function seedCreatorsMelaData(force = false): Promise<{
 
   for (const d of SEED_DEALS) {
     const creatorId = creatorIdByName.get(d.creatorName);
-    if (!creatorId) continue;
     const brandId = brandIdByName.get(d.brandName.toLowerCase());
+    if (!creatorId || !brandId) continue;
     const deal = await createDeal({
       creatorId,
       brandId,

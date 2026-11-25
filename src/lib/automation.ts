@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import nodemailer from "nodemailer";
 import { calculateSplit, formatFollowers, formatINR } from "@/lib/format";
 import { appendAutomationLogs, getAutomationConfig } from "@/lib/store";
 import type {
@@ -40,8 +41,14 @@ function buildSlackBlockPayload(deal: DealDTO, creator: CreatorDTO, previousStat
       {
         type: "section",
         fields: [
-          { type: "mrkdwn", text: `*Creator:*\n${creator.name} (${creator.handle})` },
-          { type: "mrkdwn", text: `*Brand:*\n${deal.brandName} · ${deal.brandSector}` },
+          {
+            type: "mrkdwn",
+            text: `*Creator:*\n${creator.name}${creator.handle ? ` (${creator.handle})` : ""}`,
+          },
+          {
+            type: "mrkdwn",
+            text: `*Brand:*\n${deal.brandName}${deal.brandSector ? ` · ${deal.brandSector}` : ""}`,
+          },
           { type: "mrkdwn", text: `*Gross Value:*\n${formatINR(deal.dealValue)}` },
           {
             type: "mrkdwn",
@@ -108,19 +115,88 @@ function buildEmailPayload(
   previousStatus: string
 ) {
   const split = calculateSplit(deal.dealValue, deal.agencyFeePct);
-  const subject = `[CreatorsMela IRIS] ${deal.status}: ${creator.name} × ${deal.brandName} (${formatINR(deal.dealValue)})`;
+  const subject = `[CreatorsMela] ${deal.status}: ${creator.name} × ${deal.brandName} (${formatINR(deal.dealValue)})`;
+  const text = `${creator.name}${creator.niche ? ` (${creator.niche})` : ""} moved from ${previousStatus} to ${deal.status} for ${deal.brandName}.
+Gross Deal Value: ${formatINR(deal.dealValue)}
+Net Creator Payout: ${formatINR(split.netCreatorPayout)}
+Agency Fee (${split.agencyFeePct}%): ${formatINR(split.agencyFee)}
+Deliverables: ${deal.deliverables}${deal.dueDate ? `\nDue Date: ${deal.dueDate}` : ""}`;
+
   return {
     to: managerEmail,
     subject,
-    html: `<h2>${deal.status} Brand Collab Update</h2>
-<p><strong>${creator.name}</strong> (${creator.niche}) moved from <em>${previousStatus}</em> to <strong>${deal.status}</strong> for <strong>${deal.brandName}</strong>.</p>
-<ul>
-  <li>Gross Deal Value: ${formatINR(deal.dealValue)}</li>
-  <li>Net Creator Payout: ${formatINR(split.netCreatorPayout)}</li>
-  <li>Agency Fee (${split.agencyFeePct}%): ${formatINR(split.agencyFee)}</li>
-  <li>Deliverables: ${deal.deliverables}</li>
-</ul>`,
+    text,
+    html: `<div style="font-family:system-ui,-apple-system,sans-serif;line-height:1.5;color:#141320">
+  <h2 style="margin:0 0 8px">${deal.status} Brand Collab Update</h2>
+  <p style="margin:0 0 12px"><strong>${creator.name}</strong> (${creator.niche}) moved from <em>${previousStatus}</em> to <strong>${deal.status}</strong> for <strong>${deal.brandName}</strong>.</p>
+  <ul style="margin:0;padding-left:18px">
+    <li><strong>Gross Deal Value:</strong> ${formatINR(deal.dealValue)}</li>
+    <li><strong>Net Creator Payout:</strong> ${formatINR(split.netCreatorPayout)}</li>
+    <li><strong>Agency Fee (${split.agencyFeePct}%):</strong> ${formatINR(split.agencyFee)}</li>
+    <li><strong>Deliverables:</strong> ${deal.deliverables}</li>
+    ${deal.dueDate ? `<li><strong>Due Date:</strong> ${deal.dueDate}</li>` : ""}
+  </ul>
+</div>`,
   };
+}
+
+async function sendEmailViaSmtp(payload: {
+  to: string;
+  subject: string;
+  text: string;
+  html: string;
+}): Promise<{ ok: boolean; status: number; latencyMs: number; responseBody: string } | null> {
+  const smtpUser =
+    process.env.SMTP_USER?.trim() || process.env.GMAIL_USER?.trim();
+  const rawPass =
+    process.env.SMTP_PASS?.trim() || process.env.GMAIL_APP_PASSWORD?.trim();
+  if (!smtpUser || !rawPass) return null;
+
+  // Gmail App Passwords are often copied with spaces every 4 characters
+  const smtpPass = rawPass.replace(/\s+/g, "");
+  const host = process.env.SMTP_HOST?.trim() || "smtp.gmail.com";
+  const port = Number(process.env.SMTP_PORT || "465");
+  const from =
+    process.env.SMTP_FROM?.trim() || `CreatorsMela IRIS <${smtpUser}>`;
+
+  const started = Date.now();
+  try {
+    const transporter = nodemailer.createTransport({
+      host,
+      port,
+      secure: port === 465,
+      auth: {
+        user: smtpUser,
+        pass: smtpPass,
+      },
+      connectionTimeout: 6000,
+      greetingTimeout: 6000,
+      socketTimeout: 8000,
+    });
+
+    const info = await transporter.sendMail({
+      from,
+      to: payload.to,
+      subject: payload.subject,
+      text: payload.text,
+      html: payload.html,
+    });
+
+    return {
+      ok: true,
+      status: 200,
+      latencyMs: Date.now() - started,
+      responseBody: `Accepted (${info.messageId})`.slice(0, 300),
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      status: 502,
+      latencyMs: Date.now() - started,
+      responseBody:
+        err instanceof Error ? err.message.slice(0, 300) : "SMTP send failed",
+    };
+  }
 }
 
 function buildWebhookPayload(deal: DealDTO, creator: CreatorDTO, previousStatus: string) {
@@ -160,7 +236,7 @@ async function postJsonWithTimeout(
 ): Promise<{ ok: boolean; status: number; latencyMs: number; responseBody: string }> {
   const started = Date.now();
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 5500);
+  const timer = setTimeout(() => controller.abort(), 10000);
   try {
     const res = await fetch(url, {
       method: "POST",
@@ -213,7 +289,7 @@ export async function dispatchDealAutomations(params: {
   }
 
   const enabledChannels: AutomationChannel[] = (
-    ["slack", "sheets", "email", "webhook"] as AutomationChannel[]
+    ["email", "sheets", "slack"] as AutomationChannel[]
   ).filter((ch) => config.channels[ch]);
 
   if (enabledChannels.length === 0) return [];
@@ -329,12 +405,63 @@ export async function dispatchDealAutomations(params: {
       } else if (channel === "email") {
         const managerEmail =
           config.managerEmail?.trim() ||
-          process.env.TALENT_MANAGER_EMAIL ||
+          process.env.TALENT_MANAGER_EMAIL?.trim() ||
+          process.env.GMAIL_USER?.trim() ||
+          process.env.SMTP_USER?.trim() ||
           "talent-ops@creatorsmela.com";
         const payload = buildEmailPayload(deal, creator, managerEmail, previousStatus);
+        const emailWebhookUrl = process.env.EMAIL_WEBHOOK_URL?.trim();
         const resendKey = process.env.RESEND_API_KEY?.trim();
 
-        if (resendKey) {
+        const smtpResult = await sendEmailViaSmtp(payload);
+        if (smtpResult) {
+          logsToPersist.push({
+            dealId: deal.id,
+            creatorId: creator.id,
+            creatorName: creator.name,
+            brandName: deal.brandName,
+            dealValue: deal.dealValue,
+            previousStatus,
+            newStatus: deal.status,
+            channel,
+            mode: "live",
+            status: smtpResult.ok ? "delivered" : "failed",
+            httpStatus: smtpResult.status,
+            latencyMs: smtpResult.latencyMs,
+            idempotencyKey,
+            summary: `Email sent via SMTP to ${managerEmail}`,
+            payload,
+            responseBody: smtpResult.responseBody,
+            triggeredAt,
+          });
+        } else if (emailWebhookUrl) {
+          const result = await postJsonWithTimeout(emailWebhookUrl, {
+            action: "sendEmail",
+            to: managerEmail,
+            subject: payload.subject,
+            text: payload.text,
+            html: payload.html,
+          });
+          logsToPersist.push({
+            dealId: deal.id,
+            creatorId: creator.id,
+            creatorName: creator.name,
+            brandName: deal.brandName,
+            dealValue: deal.dealValue,
+            previousStatus,
+            newStatus: deal.status,
+            channel,
+            mode: "live",
+            status: result.ok ? "delivered" : "failed",
+            httpStatus: result.status,
+            latencyMs: result.latencyMs,
+            idempotencyKey,
+            summary: `Email sent via Google Apps Script to ${managerEmail}`,
+            payload,
+            responseBody: result.responseBody,
+            triggeredAt,
+          });
+        } else if (resendKey) {
           const result = await postJsonWithTimeout(
             "https://api.resend.com/emails",
             {
@@ -383,7 +510,8 @@ export async function dispatchDealAutomations(params: {
             idempotencyKey,
             summary: `Email alert staged for ${managerEmail}`,
             payload,
-            responseBody: "Simulated (add RESEND_API_KEY for live email delivery)",
+            responseBody:
+              "Simulated (set GMAIL_USER + GMAIL_APP_PASSWORD, EMAIL_WEBHOOK_URL, or RESEND_API_KEY in .env.local)",
             triggeredAt,
           });
         }

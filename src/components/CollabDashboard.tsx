@@ -1,8 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle, CheckCircle2, Zap } from "lucide-react";
-import { ApiExplorerView } from "@/components/ApiExplorerView";
 import { AutomationHubView } from "@/components/AutomationHubView";
 import { CreatorRosterView } from "@/components/CreatorRosterView";
 import { HeroOverview } from "@/components/HeroOverview";
@@ -20,6 +19,8 @@ import { useThemeMode } from "@/lib/theme";
 import type {
   AutomationConfigDTO,
   AutomationLogDTO,
+  BrandDTO,
+  CreatorDTO,
   CreatorTier,
   CreatorWithDealsDTO,
   DashboardPayload,
@@ -35,51 +36,6 @@ interface ToastMessage {
   detail?: string;
 }
 
-async function runGraphQLClient<T>(
-  query: string,
-  variables?: Record<string, unknown>
-): Promise<T> {
-  const res = await fetch("/api/graphql", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ query, variables }),
-  });
-  const json = await res.json();
-  if (!res.ok || (json.errors && json.errors.length > 0)) {
-    throw new Error(json.errors?.[0]?.message || "GraphQL request failed");
-  }
-  return json.data as T;
-}
-
-const DASHBOARD_GRAPHQL_QUERY = `query GetDashboard {
-  dashboard {
-    storageMode
-    creators {
-      id name handle platform niche followerCount engagementRate baseRate email managerName tier createdAt updatedAt
-      totalPipelineValue confirmedOrPaidValue paidValue
-      deals {
-        id creatorId brandId creatorName brandName brandSector campaignTitle deliverables dealValue agencyFeePct status dueDate notes lastAutomatedStatus confirmedAt paidAt createdAt updatedAt
-      }
-    }
-    brands {
-      id name sector contactName contactEmail website notes createdAt updatedAt dealsCount totalPipelineValue confirmedOrPaidValue
-    }
-    deals {
-      id creatorId brandId creatorName brandName brandSector campaignTitle deliverables dealValue agencyFeePct status dueDate notes lastAutomatedStatus confirmedAt paidAt createdAt updatedAt
-    }
-    metrics {
-      totalPipelineValue pendingValue confirmedValue paidValue agencyCommissionConfirmedAndPaid netCreatorPayoutConfirmedAndPaid totalCreators totalDeals pendingCount confirmedCount paidCount conversionRate automationsFiredCount
-    }
-    automationConfig {
-      id triggerOnConfirmed triggerOnPaid slackWebhookUrl sheetsWebhookUrl customWebhookUrl managerEmail useLoopbackTestSink updatedAt
-      channels { slack sheets email webhook }
-    }
-    automationLogs {
-      id dealId creatorId creatorName brandName dealValue previousStatus newStatus channel mode status httpStatus latencyMs idempotencyKey summary responseBody triggeredAt
-    }
-  }
-}`;
-
 export function CollabDashboard({
   initialTab = "roster",
 }: {
@@ -89,7 +45,6 @@ export function CollabDashboard({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [activeTab, setActiveTab] = useState<ActiveTab>(initialTab);
-  const [apiTransport, setApiTransport] = useState<"rest" | "graphql">("rest");
 
   const { theme, toggleTheme: handleToggleTheme } = useThemeMode();
 
@@ -100,7 +55,19 @@ export function CollabDashboard({
 
   // Modals & Busy States
   const [addCreatorOpen, setAddCreatorOpen] = useState(false);
+  const [creatorDefaultName, setCreatorDefaultName] = useState("");
+  const [creatorModalStacked, setCreatorModalStacked] = useState(false);
+  const creatorResolverRef = useRef<((creator: CreatorDTO | null) => void) | null>(
+    null
+  );
+
   const [addBrandOpen, setAddBrandOpen] = useState(false);
+  const [brandDefaultName, setBrandDefaultName] = useState("");
+  const [brandModalStacked, setBrandModalStacked] = useState(false);
+  const brandResolverRef = useRef<((brand: BrandDTO | null) => void) | null>(
+    null
+  );
+
   const [addDealOpen, setAddDealOpen] = useState(false);
   const [defaultCreatorForDeal, setDefaultCreatorForDeal] = useState("");
   const [defaultBrandForDeal, setDefaultBrandForDeal] = useState<{
@@ -131,25 +98,17 @@ export function CollabDashboard({
 
   const fetchDashboard = useCallback(async () => {
     try {
-      if (apiTransport === "graphql") {
-        const result = await runGraphQLClient<{ dashboard: DashboardPayload }>(
-          DASHBOARD_GRAPHQL_QUERY
-        );
-        setData(result.dashboard);
-        setError("");
-      } else {
-        const res = await fetch("/api/dashboard", { cache: "no-store" });
-        const json = await res.json();
-        if (!res.ok) throw new Error(json.error || "Failed to load dashboard");
-        setData(json as DashboardPayload);
-        setError("");
-      }
+      const res = await fetch("/api/dashboard", { cache: "no-store" });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Failed to load dashboard");
+      setData(json as DashboardPayload);
+      setError("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load data");
     } finally {
       setLoading(false);
     }
-  }, [apiTransport]);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -210,27 +169,28 @@ export function CollabDashboard({
   const handleSeedData = async () => {
     setIsSeeding(true);
     try {
-      const force = Boolean(data && data.creators.length > 0);
       const res = await fetch("/api/seed", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ force }),
+        body: JSON.stringify({ force: true }),
       });
-      if (!res.ok) throw new Error("Failed to load sample data");
       const result = (await res.json()) as {
-        creatorsCreated: number;
-        dealsCreated: number;
+        creatorsCreated?: number;
+        brandsCreated?: number;
+        dealsCreated?: number;
+        error?: string;
       };
+      if (!res.ok) throw new Error(result.error || "Failed to generate data");
       await fetchDashboard();
       pushToast({
         kind: "success",
-        title: "Sample roster loaded",
-        detail: `${result.creatorsCreated} creators and ${result.dealsCreated} deals added.`,
+        title: "Fresh sample data generated",
+        detail: `${result.creatorsCreated ?? 0} creators, ${result.brandsCreated ?? 0} brands, and ${result.dealsCreated ?? 0} deals created.`,
       });
     } catch (err) {
       pushToast({
         kind: "error",
-        title: "Could not load sample data",
+        title: "Could not generate sample data",
         detail: err instanceof Error ? err.message : "Unknown error",
       });
     } finally {
@@ -248,7 +208,7 @@ export function CollabDashboard({
     baseRate: number;
     managerName: string;
     tier: CreatorTier;
-  }) => {
+  }): Promise<CreatorDTO> => {
     const res = await fetch("/api/creators", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -256,12 +216,16 @@ export function CollabDashboard({
     });
     const json = await res.json();
     if (!res.ok) throw new Error(json.error || "Failed to add creator");
+    const created = json.creator as CreatorDTO;
     await fetchDashboard();
     pushToast({
       kind: "success",
-      title: `Added ${payload.name}`,
+      title: `Added ${created.name}`,
       detail: payload.niche,
     });
+    creatorResolverRef.current?.(created);
+    creatorResolverRef.current = null;
+    return created;
   };
 
   const handleCreateBrand = async (payload: {
@@ -271,7 +235,7 @@ export function CollabDashboard({
     contactEmail: string;
     website: string;
     notes: string;
-  }) => {
+  }): Promise<BrandDTO> => {
     const res = await fetch("/api/brands", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -279,13 +243,49 @@ export function CollabDashboard({
     });
     const json = await res.json();
     if (!res.ok) throw new Error(json.error || "Failed to register brand");
+    const created = json.brand as BrandDTO;
     await fetchDashboard();
     pushToast({
       kind: "success",
-      title: `Registered ${payload.name}`,
+      title: `Registered ${created.name}`,
       detail: payload.sector,
     });
+    brandResolverRef.current?.(created);
+    brandResolverRef.current = null;
+    return created;
   };
+
+  const closeAddCreatorModal = () => {
+    creatorResolverRef.current?.(null);
+    creatorResolverRef.current = null;
+    setAddCreatorOpen(false);
+    setCreatorModalStacked(false);
+    setCreatorDefaultName("");
+  };
+
+  const closeAddBrandModal = () => {
+    brandResolverRef.current?.(null);
+    brandResolverRef.current = null;
+    setAddBrandOpen(false);
+    setBrandModalStacked(false);
+    setBrandDefaultName("");
+  };
+
+  const handleRequestRegisterCreator = (typedName: string) =>
+    new Promise<CreatorDTO | null>((resolve) => {
+      creatorResolverRef.current = resolve;
+      setCreatorDefaultName(typedName);
+      setCreatorModalStacked(true);
+      setAddCreatorOpen(true);
+    });
+
+  const handleRequestRegisterBrand = (typedName: string) =>
+    new Promise<BrandDTO | null>((resolve) => {
+      brandResolverRef.current = resolve;
+      setBrandDefaultName(typedName);
+      setBrandModalStacked(true);
+      setAddBrandOpen(true);
+    });
 
   const handleDeleteBrand = async (brandId: string) => {
     try {
@@ -304,7 +304,6 @@ export function CollabDashboard({
 
   const handleCreateDeal = async (payload: {
     creatorId: string;
-    newCreator?: { name: string; niche: string; followerCount: number };
     brandId?: string;
     brandName: string;
     brandSector: string;
@@ -316,25 +315,11 @@ export function CollabDashboard({
     dueDate: string;
     notes: string;
   }) => {
-    let targetCreatorId = payload.creatorId;
-    if (payload.newCreator) {
-      const creatorRes = await fetch("/api/creators", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload.newCreator),
-      });
-      const creatorJson = await creatorRes.json();
-      if (!creatorRes.ok) {
-        throw new Error(creatorJson.error || "Failed to create creator");
-      }
-      targetCreatorId = creatorJson.creator.id;
-    }
-
     const res = await fetch("/api/deals", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        creatorId: targetCreatorId,
+        creatorId: payload.creatorId,
         brandId: payload.brandId,
         brandName: payload.brandName,
         brandSector: payload.brandSector,
@@ -356,7 +341,7 @@ export function CollabDashboard({
     if (triggered.length > 0) {
       pushToast({
         kind: "automation",
-        title: `Deal added · ${triggered.length} automations fired`,
+        title: `Deal added · ${triggered.length} notifications sent`,
         detail: triggered.map((t) => t.channel).join(", "),
       });
     } else {
@@ -371,42 +356,26 @@ export function CollabDashboard({
   const commitDealStatusUpdate = async (dealId: string, nextStatus: DealStatus) => {
     setUpdatingDealId(dealId);
     try {
-      let triggered: AutomationLogDTO[] = [];
-      if (apiTransport === "graphql") {
-        const gqlRes = await runGraphQLClient<{
-          updateDealStatus: { automationsTriggered: AutomationLogDTO[] };
-        }>(
-          `mutation UpdateDealStatus($id: String!, $status: String!) {
-            updateDealStatus(id: $id, status: $status) {
-              deal { id status }
-              automationsTriggered { id channel mode httpStatus }
-            }
-          }`,
-          { id: dealId, status: nextStatus }
-        );
-        triggered = gqlRes.updateDealStatus.automationsTriggered || [];
-      } else {
-        const res = await fetch(`/api/deals/${dealId}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ status: nextStatus }),
-        });
-        const json = await res.json();
-        if (!res.ok) throw new Error(json.error || "Failed to update status");
-        triggered = (json.automationsTriggered || []) as AutomationLogDTO[];
-      }
+      const res = await fetch(`/api/deals/${dealId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: nextStatus }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Failed to update status");
+      const triggered = (json.automationsTriggered || []) as AutomationLogDTO[];
 
       await fetchDashboard();
       if (triggered.length > 0) {
         pushToast({
           kind: "automation",
-          title: `Moved to ${nextStatus} (${apiTransport.toUpperCase()}) · Automations Fired`,
+          title: `Moved to ${nextStatus} · Notifications Sent`,
           detail: triggered.map((t) => t.channel).join(", "),
         });
       } else {
         pushToast({
           kind: "success",
-          title: `Updated to ${nextStatus} via ${apiTransport.toUpperCase()}`,
+          title: `Updated to ${nextStatus}`,
         });
       }
     } catch (err) {
@@ -427,7 +396,7 @@ export function CollabDashboard({
     if (deal.status === "Paid") {
       pushToast({
         kind: "error",
-        title: "Deal status is locked",
+        title: "Deal is already Paid",
         detail: "Deals marked as Paid cannot change status.",
       });
       return;
@@ -489,7 +458,7 @@ export function CollabDashboard({
     const json = await res.json();
     if (!res.ok) throw new Error(json.error || "Failed to save config");
     await fetchDashboard();
-    pushToast({ kind: "success", title: "Automation settings saved" });
+    pushToast({ kind: "success", title: "Notification settings saved" });
   };
 
   const handleTestAutomation = async () => {
@@ -504,10 +473,23 @@ export function CollabDashboard({
       if (!res.ok) throw new Error(json.error || "Test failed");
       await fetchDashboard();
       const logs = (json.logs || []) as AutomationLogDTO[];
+      if (logs.length === 0) {
+        pushToast({
+          kind: "error",
+          title: "No notification channels enabled",
+          detail: "Enable Slack, Email, Sheets, or Webhook first.",
+        });
+        return;
+      }
+      const hasFailure = logs.some((l) => l.status === "failed");
       pushToast({
-        kind: "automation",
-        title: `Test fired ${logs.length} actions`,
-        detail: logs.map((l) => l.channel).join(", "),
+        kind: hasFailure ? "error" : "automation",
+        title: hasFailure
+          ? `Test completed with delivery failures`
+          : `Test fired ${logs.length} notifications`,
+        detail: logs
+          .map((l) => `${l.channel} (${l.mode}: ${l.status})`)
+          .join(", "),
       });
     } catch (err) {
       pushToast({
@@ -574,11 +556,18 @@ export function CollabDashboard({
         onTabChange={setActiveTab}
         theme={theme}
         onToggleTheme={handleToggleTheme}
-        automationsCount={data?.automationLogs.length || 0}
-        onOpenAddCreator={() => setAddCreatorOpen(true)}
-        onOpenAddBrand={() => setAddBrandOpen(true)}
+        onOpenAddCreator={() => {
+          setCreatorDefaultName("");
+          setCreatorModalStacked(false);
+          setAddCreatorOpen(true);
+        }}
+        onOpenAddBrand={() => {
+          setBrandDefaultName("");
+          setBrandModalStacked(false);
+          setAddBrandOpen(true);
+        }}
         onOpenAddDeal={() => {
-          setDefaultCreatorForDeal(data?.creators[0]?.id || "");
+          setDefaultCreatorForDeal("");
           setDefaultBrandForDeal({ name: "", id: "" });
           setAddDealOpen(true);
         }}
@@ -620,23 +609,12 @@ export function CollabDashboard({
           </div>
         ) : (
           <>
-            <HeroOverview
-              metrics={data.metrics}
-              apiTransport={apiTransport}
-              onToggleTransport={() => {
-                const next = apiTransport === "rest" ? "graphql" : "rest";
-                setApiTransport(next);
-                pushToast({
-                  kind: "success",
-                  title: `Switched live transport to ${next.toUpperCase()}`,
-                  detail:
-                    next === "graphql"
-                      ? "Mutations & queries now route through /api/graphql"
-                      : "Mutations & queries now route through REST endpoints",
-                });
-              }}
-              onGoToAutomations={() => setActiveTab("automations")}
-            />
+            {activeTab !== "notifications" && (
+              <HeroOverview
+                metrics={data.metrics}
+                brandsCount={data.brands.length}
+              />
+            )}
 
             {activeTab === "roster" && (
               <CreatorRosterView
@@ -659,12 +637,20 @@ export function CollabDashboard({
                   setAddDealOpen(true);
                 }}
                 onOpenAddDealForBrand={(bName, bId) => {
-                  setDefaultCreatorForDeal(data.creators[0]?.id || "");
+                  setDefaultCreatorForDeal("");
                   setDefaultBrandForDeal({ name: bName, id: bId });
                   setAddDealOpen(true);
                 }}
-                onOpenAddCreator={() => setAddCreatorOpen(true)}
-                onOpenAddBrand={() => setAddBrandOpen(true)}
+                onOpenAddCreator={() => {
+                  setCreatorDefaultName("");
+                  setCreatorModalStacked(false);
+                  setAddCreatorOpen(true);
+                }}
+                onOpenAddBrand={() => {
+                  setBrandDefaultName("");
+                  setBrandModalStacked(false);
+                  setAddBrandOpen(true);
+                }}
                 onOpenDealBrief={(deal, creator) =>
                   setBriefTarget({ deal, creator })
                 }
@@ -687,26 +673,13 @@ export function CollabDashboard({
               />
             )}
 
-            {activeTab === "automations" && (
+            {activeTab === "notifications" && (
               <AutomationHubView
+                key={data.automationConfig.updatedAt}
                 config={data.automationConfig}
-                logs={data.automationLogs}
                 onSaveConfig={handleSaveAutomationConfig}
                 onTestAutomation={handleTestAutomation}
                 isTesting={isTestingAutomation}
-              />
-            )}
-
-            {activeTab === "api" && (
-              <ApiExplorerView
-                apiTransport={apiTransport}
-                onChangeTransport={(mode) => {
-                  setApiTransport(mode);
-                  pushToast({
-                    kind: "success",
-                    title: `Switched live transport to ${mode.toUpperCase()}`,
-                  });
-                }}
               />
             )}
           </>
@@ -714,14 +687,20 @@ export function CollabDashboard({
       </main>
 
       <AddCreatorModal
+        key={`creator-${String(addCreatorOpen)}-${creatorDefaultName}`}
         open={addCreatorOpen}
-        onClose={() => setAddCreatorOpen(false)}
+        defaultName={creatorDefaultName}
+        stacked={creatorModalStacked}
+        onClose={closeAddCreatorModal}
         onCreate={handleCreateCreator}
       />
 
       <AddBrandModal
+        key={`brand-${String(addBrandOpen)}-${brandDefaultName}`}
         open={addBrandOpen}
-        onClose={() => setAddBrandOpen(false)}
+        defaultName={brandDefaultName}
+        stacked={brandModalStacked}
+        onClose={closeAddBrandModal}
         onCreate={handleCreateBrand}
       />
 
@@ -734,6 +713,8 @@ export function CollabDashboard({
         defaultBrandName={defaultBrandForDeal.name}
         defaultBrandId={defaultBrandForDeal.id}
         onClose={() => setAddDealOpen(false)}
+        onRequestRegisterCreator={handleRequestRegisterCreator}
+        onRequestRegisterBrand={handleRequestRegisterBrand}
         onCreateDeal={handleCreateDeal}
       />
 

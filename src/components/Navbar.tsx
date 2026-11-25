@@ -3,14 +3,13 @@
 import Link from "next/link";
 import { Home, Moon, Plus, Sun } from "lucide-react";
 
-export type ActiveTab = "roster" | "pipeline" | "automations" | "api";
+export type ActiveTab = "roster" | "pipeline" | "notifications";
 
 interface NavbarProps {
   activeTab: ActiveTab;
   onTabChange: (tab: ActiveTab) => void;
   theme: "light" | "dark";
   onToggleTheme: () => void;
-  automationsCount: number;
   onOpenAddCreator: () => void;
   onOpenAddBrand: () => void;
   onOpenAddDeal: () => void;
@@ -19,8 +18,7 @@ interface NavbarProps {
 const NAV_ITEMS: { id: ActiveTab; label: string }[] = [
   { id: "roster", label: "Creators & Deals" },
   { id: "pipeline", label: "Pipeline" },
-  { id: "automations", label: "Automations" },
-  { id: "api", label: "REST & GraphQL" },
+  { id: "notifications", label: "Notifications" },
 ];
 
 export function Navbar({
@@ -28,7 +26,6 @@ export function Navbar({
   onTabChange,
   theme,
   onToggleTheme,
-  automationsCount,
   onOpenAddCreator,
   onOpenAddBrand,
   onOpenAddDeal,
@@ -66,17 +63,6 @@ export function Navbar({
                 }`}
               >
                 <span>{item.label}</span>
-                {item.id === "automations" && automationsCount > 0 && (
-                  <span
-                    className={`rounded-full px-1.5 py-0.2 text-[10px] font-semibold cm-tabular ${
-                      active
-                        ? "bg-white/20 text-white"
-                        : "bg-[var(--accent-soft)] text-[var(--accent-text)]"
-                    }`}
-                  >
-                    {automationsCount}
-                  </span>
-                )}
               </button>
             );
           })}

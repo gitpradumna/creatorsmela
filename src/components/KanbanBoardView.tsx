@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, FileText, Lock } from "lucide-react";
+import { ArrowRight, CheckCircle2, FileText } from "lucide-react";
 import { formatINR, formatRelativeDate } from "@/lib/format";
 import type { CreatorWithDealsDTO, DealDTO, DealStatus } from "@/types/collab";
 
@@ -27,7 +27,7 @@ const COLUMNS: {
     {
       status: "Confirmed",
       title: "Confirmed",
-      hint: "Triggers automation",
+      hint: "Triggers notification",
       dotColor: "var(--accent)",
     },
     {
@@ -141,11 +141,15 @@ export function KanbanBoardView({
                         )}
                         {deal.status === "Paid" && (
                           <div
-                            title="Paid deals are locked and cannot change status"
-                            className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-full bg-[var(--surface)] border border-[var(--border)] px-3 py-1.5 text-xs font-medium text-[var(--text-muted)]"
+                            title="Paid deal status cannot be changed"
+                            className="inline-flex flex-1 cursor-default select-none items-center justify-center gap-1.5 rounded-full border border-[var(--border)] px-3 py-1.5 text-xs font-semibold"
+                            style={{
+                              backgroundColor: "var(--status-paid-soft-bg)",
+                              color: "var(--status-paid-soft-text)",
+                            }}
                           >
-                            <Lock className="h-3 w-3" />
-                            <span>Paid · Locked</span>
+                            <CheckCircle2 className="h-3.5 w-3.5" />
+                            <span>Paid</span>
                           </div>
                         )}
 

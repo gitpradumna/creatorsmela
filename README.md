@@ -1,6 +1,6 @@
 # CreatorsMela · Collab Tracker
 
-A full-stack talent management and brand collaboration tracker built for **CreatorsMela** (`Product, Tech & Automation` hiring assignment), backed by **Supabase PostgreSQL** and exposing both **REST** and **GraphQL** APIs with event-driven workflow automations.
+A full-stack talent management and brand collaboration tracker built for **CreatorsMela** (`Product, Tech & Automation` hiring assignment), backed by **Supabase PostgreSQL** with both **REST** and **GraphQL** APIs and event-driven workflow automations.
 
 ---
 
@@ -8,30 +8,30 @@ A full-stack talent management and brand collaboration tracker built for **Creat
 
 - **Framework:** Next.js 16 (App Router, TypeScript)
 - **Styling:** Tailwind CSS v4 (Light & Dark mode) + Lucide Icons
-- **Database:** **Supabase PostgreSQL** (`creators`, `deals`, `automation_configs`, `automation_logs` with relational foreign keys, check constraints, and database-level `Paid` status lock trigger)
+- **Database:** **Supabase PostgreSQL** (`creators`, `brands`, `deals`, `automation_configs`, `automation_logs` with relational foreign keys, check constraints, RLS policies, and a PostgreSQL trigger locking `Paid` deals)
 - **APIs:**
-  - **REST API** (`/api/creators`, `/api/deals`, `/api/dashboard`, `/api/automations`, `/api/seed`, `/api/health`) powered by Supabase PostgREST
+  - **REST API** (`/api/creators`, `/api/brands`, `/api/deals`, `/api/dashboard`, `/api/automations`, `/api/seed`, `/api/health`) powered by Supabase PostgREST
   - **GraphQL API** (`/api/graphql` powered by `graphql-js` + Supabase `pg_graphql` integration at `${NEXT_PUBLIC_SUPABASE_URL}/graphql/v1`)
 - **Automation Engine:** Server-side dispatcher supporting Slack Block Kit webhooks, Google Sheets row appends, Resend Email alerts, and HMAC-SHA256 signed outbound webhooks (plus a built-in loopback test receiver at `/api/automations/webhook-sink`).
 
 ---
 
-## Core & Extended Features
+## Product Features
 
-1. **Creator-Grouped Roster & Deal Tracker (`Creators & Deals`)**
-   - Add creators (`name`, `niche`, `followerCount`, `handle`, `platform`, `managerName`) and brand deals (`brandName`, `deliverables`, `dealValue`, `agencyFeePct`, `status`: `Pending` | `Confirmed` | `Paid`, `dueDate`, `notes`).
-   - Add deals to an existing creator **or** create a new creator inline inside the deal modal.
-   - Filter by **Status** (`All`, `Pending`, `Confirmed`, `Paid`), **Creator**, and live keyword search.
-   - **Immutable `Paid` Status Lock:** Marking a deal as `Paid` opens a confirmation popup warning that `Paid` is permanent; once marked `Paid`, status changes are blocked in the UI, API (`HTTP 409`), and PostgreSQL trigger (`prevent_paid_deal_status_change`).
+1. **Homepage & One-Click Demo Login (`/`)**
+   - Clean landing page introducing the CreatorsMela Collab Tracker with a top **Demo Login** button that takes talent managers straight to `/dashboard`.
 
-2. **Interactive Kanban Pipeline (`Pipeline`)**
-   - Three-stage board (`Pending` → `Confirmed` → `Paid`) with column totals and status advancement that triggers automations immediately.
+2. **Creator & Brand Directories + Deal Tracker (`/dashboard` → `Creators & Deals`)**
+   - **Deals by Creator:** View creators alongside their brand collaborations, filter by Status (`All`, `Pending`, `Confirmed`, `Paid`), Creator, or keyword search.
+   - **All Creators Directory:** Dedicated list of every registered creator (`Name`, `Handle`, `Niche`, `Followers`, `Platform`, `Manager`, `Total Pipeline`).
+   - **Registered Brands Directory:** Register brands with sector, POC, email, and website; typing a brand name in the **Add Brand Deal** form displays matching registered brands live below the input.
+   - **Immutable `Paid` Status Lock:** Choosing `Paid` opens a confirmation popup warning that `Paid` is permanent; once marked `Paid`, status changes are blocked in the UI, REST/GraphQL API (`HTTP 409`), and PostgreSQL trigger (`prevent_paid_deal_status_change`).
 
-3. **Automation Hub & Activity Log (`Automations`)**
-   - Configure trigger conditions (`On Confirmed`, `On Paid`), toggle destination channels (`Slack`, `Google Sheets`, `Signed Webhook`, `Email`), save live webhook URLs, run manual tests, and inspect dispatched JSON payloads.
+3. **Interactive Kanban Pipeline (`Pipeline`)**
+   - Three-stage board (`Pending` → `Confirmed` → `Paid`) with column deal totals and instant automation execution.
 
-4. **Live REST & GraphQL Explorer (`REST & GraphQL`)**
-   - Switch the live dashboard transport between **REST** and **GraphQL** on the fly, and execute live GraphQL queries or REST `GET` requests directly against Supabase PostgreSQL from the UI.
+4. **Automation Hub & Activity Log (`Automations`)**
+   - Configure triggers (`On Confirmed`, `On Paid`), toggle channels (`Slack`, `Google Sheets`, `Signed Webhook`, `Email`), save live webhook URLs, run manual tests, and inspect dispatched JSON payloads.
 
 5. **Printable Deal Payout Sheet & CSV Export**
    - Export filtered deals to CSV or open a printable **Deal Payout Sheet** showing Gross Value, Agency Fee (%), Net Creator Payout, and estimated 10% TDS u/s 194J.
@@ -42,13 +42,13 @@ A full-stack talent management and brand collaboration tracker built for **Creat
 
 ### 1. Create Supabase Project & Run Schema
 
-1. Create a free project at [supabase.com](https://supabase.com).
+1. Create a project at [supabase.com](https://supabase.com).
 2. Open **SQL Editor** in your Supabase dashboard and run [`supabase/schema.sql`](./supabase/schema.sql).
-   This creates `creators`, `deals`, `automation_configs`, and `automation_logs`, along with `updated_at` triggers and the `Paid` immutability trigger.
+   This creates `creators`, `brands`, `deals`, `automation_configs`, and `automation_logs`, along with `updated_at` triggers, RLS policies, and the `Paid` immutability trigger.
 
 ### 2. Configure Environment Variables
 
-Copy `.env.example` to `.env.local` and fill in your Supabase credentials:
+Copy `.env.example` to `.env.local` and add your Supabase credentials:
 
 ```bash
 cp .env.example .env.local
@@ -72,30 +72,204 @@ pnpm install
 pnpm dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) and click **Sample Data** to seed CreatorsMela sample creators and brand collaborations into Supabase PostgreSQL.
+Open [http://localhost:3000](http://localhost:3000), click **Demo Login**, and click **Sample Data** inside `/dashboard` to populate Supabase PostgreSQL with sample CreatorsMela creators, brands, and deals.
 
 ---
 
-## API Reference (REST & GraphQL)
+## API Endpoints & Responses (YAML)
+
+Full OpenAPI specification: [`docs/api-spec.yaml`](./docs/api-spec.yaml)
 
 ### REST Endpoints
 
-| Method | Endpoint | Description |
-| --- | --- | --- |
-| `GET` | `/api/health` | Verifies Supabase PostgreSQL connectivity and row counts |
-| `GET` | `/api/dashboard` | Aggregated creators with deals, KPIs, automation config & logs |
-| `GET`, `POST` | `/api/creators` | List or create a creator |
-| `PATCH`, `DELETE` | `/api/creators/[id]` | Update or delete a creator (cascades deals in Postgres) |
-| `GET`, `POST` | `/api/deals` | List (supports `?status=`, `?creatorId=`, `?niche=`, `?search=`) or create a deal |
-| `PATCH`, `DELETE` | `/api/deals/[id]` | Update a deal; blocks reverting `Paid` deals (`409`) and fires automations on `Confirmed` / `Paid` |
-| `GET`, `PUT` | `/api/automations` | Read or update automation rules & webhook destinations |
-| `POST` | `/api/automations/test` | Dispatch a test automation run across enabled channels |
-| `POST` | `/api/automations/webhook-sink` | Built-in loopback receiver verifying `X-CreatorsMela-Signature` HMAC-SHA256 |
-| `POST` | `/api/seed` | Seed sample CreatorsMela roster & brand deals (`{ "force": true }` resets) |
+```yaml
+rest_endpoints:
+  - method: GET
+    path: /api/health
+    description: Verifies Supabase PostgreSQL connectivity and row counts
+    response:
+      status: 200
+      body:
+        ok: true
+        storageMode: supabase-postgres
+        creatorsCount: 6
+        dealsCount: 11
 
-### GraphQL Endpoint (`POST /api/graphql` & `GET /api/graphql`)
+  - method: GET
+    path: /api/dashboard
+    description: Returns creators with nested deals, registered brands, KPIs, and automation logs
+    response:
+      status: 200
+      body:
+        storageMode: supabase-postgres
+        metrics:
+          totalPipelineValue: 3680000
+          pendingValue: 1035000
+          confirmedValue: 1165000
+          paidValue: 1480000
+          conversionRate: 73
+          automationsFiredCount: 8
 
-Supports queries (`health`, `dashboard`, `creators`, `deals`, `automationLogs`) and mutations (`createCreator`, `createDeal`, `updateDealStatus`, `deleteCreator`, `deleteDeal`, `seedSampleData`), plus a helper for Supabase's native `pg_graphql` endpoint (`${NEXT_PUBLIC_SUPABASE_URL}/graphql/v1`).
+  - method: POST
+    path: /api/creators
+    description: Register a new creator
+    request:
+      name: Tech Burner
+      niche: Tech & Gadgets
+      followerCount: 12000000
+      platform: YouTube
+    response:
+      status: 201
+      body:
+        creator:
+          id: "2940f970-7e41-4c28-9ea1-2a3d9f1a0981"
+          name: Tech Burner
+          handle: "@techburner"
+          niche: Tech & Gadgets
+          followerCount: 12000000
+
+  - method: POST
+    path: /api/brands
+    description: Register a brand for typeahead selection in deal forms
+    request:
+      name: District by Zomato
+      sector: LIVE EVENTS
+      contactName: Zoya Khan
+      contactEmail: partners@district.in
+    response:
+      status: 201
+      body:
+        brand:
+          id: "5c14f0df-2c44-4f10-96aa-3b88823c2d91"
+          name: District by Zomato
+          sector: LIVE EVENTS
+
+  - method: POST
+    path: /api/deals
+    description: Create a brand deal (auto-fires automations if initial status is Confirmed or Paid)
+    request:
+      creatorId: "7b7c65a4-47f4-4db3-b91e-1d8a55d7d810"
+      brandName: Lenskart
+      dealValue: 480000
+      status: Confirmed
+      deliverables: "1 YT Integration + 2 IG Reels"
+    response:
+      status: 201
+      body:
+        deal:
+          id: "d1e3b4a0-8f22-41af-98d4-99f847021c01"
+          brandName: Lenskart
+          status: Confirmed
+          dealValue: 480000
+        automationsTriggered:
+          - channel: slack
+            mode: simulated
+            httpStatus: 200
+          - channel: sheets
+            mode: simulated
+            httpStatus: 200
+          - channel: webhook
+            mode: loopback
+            httpStatus: 200
+
+  - method: PATCH
+    path: /api/deals/{id}
+    description: Update deal status; triggers automations on Confirmed/Paid; rejects changes to Paid deals
+    request:
+      status: Paid
+    responses:
+      200:
+        deal:
+          id: "d1e3b4a0-8f22-41af-98d4-99f847021c01"
+          status: Paid
+        previousStatus: Confirmed
+        automationsTriggered:
+          - channel: slack
+            httpStatus: 200
+            summary: "Slack Block Kit alert formatted for #deals-ops"
+      409:
+        error: "Paid deals are locked and their status cannot be changed."
+
+  - method: GET / PUT
+    path: /api/automations
+    description: Read or update automation channel toggles and webhook URLs
+
+  - method: POST
+    path: /api/automations/test
+    description: Dispatch a manual test run across enabled automation channels
+
+  - method: POST
+    path: /api/automations/webhook-sink
+    description: Built-in loopback receiver verifying X-CreatorsMela-Signature HMAC-SHA256
+
+  - method: POST
+    path: /api/seed
+    description: Seed sample CreatorsMela creators, brands, deals, and logs
+```
+
+### GraphQL Endpoint (`/api/graphql` & Supabase `pg_graphql`)
+
+```yaml
+graphql_endpoint:
+  url: POST /api/graphql
+  schema_info: GET /api/graphql
+  supabase_native_pg_graphql: "${NEXT_PUBLIC_SUPABASE_URL}/graphql/v1"
+
+  sample_query:
+    request:
+      query: |
+        query PaidDeals {
+          deals(status: "Paid") {
+            id
+            brandName
+            creatorName
+            dealValue
+            status
+          }
+        }
+    response:
+      data:
+        deals:
+          - id: "d1e3b4a0-8f22-41af-98d4-99f847021c01"
+            brandName: Lenskart
+            creatorName: Hemant Show
+            dealValue: 480000
+            status: Paid
+
+  sample_mutation:
+    request:
+      query: |
+        mutation MarkDealPaid($id: ID!) {
+          updateDealStatus(id: $id, status: "Paid") {
+            deal {
+              id
+              brandName
+              status
+            }
+            automationsTriggered {
+              channel
+              mode
+              httpStatus
+            }
+          }
+        }
+      variables:
+        id: "d1e3b4a0-8f22-41af-98d4-99f847021c01"
+    response:
+      data:
+        updateDealStatus:
+          deal:
+            id: "d1e3b4a0-8f22-41af-98d4-99f847021c01"
+            brandName: Lenskart
+            status: Paid
+          automationsTriggered:
+            - channel: slack
+              mode: simulated
+              httpStatus: 200
+            - channel: webhook
+              mode: loopback
+              httpStatus: 200
+```
 
 ---
 

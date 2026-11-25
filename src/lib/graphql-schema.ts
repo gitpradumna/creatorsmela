@@ -376,7 +376,7 @@ export function createGraphQLRootValue(requestOrigin?: string) {
       const existing = await getDealById(args.id);
       if (!existing) throw new Error("Deal not found");
       if (existing.status === "Paid" && nextStatus !== "Paid") {
-        throw new Error("Paid deals are locked and their status cannot be changed.");
+        throw new Error("Deals marked as Paid cannot change status.");
       }
 
       const result = await updateDeal(args.id, { status: nextStatus });

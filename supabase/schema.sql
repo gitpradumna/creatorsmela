@@ -1,11 +1,18 @@
--- CreatorsMela Collab Tracker — Supabase PostgreSQL Schema
+-- CreatorsMela Collab Tracker — Fresh Supabase PostgreSQL Schema
+-- Cleans up existing tables and recreates all tables, triggers, constraints, and RLS policies fresh.
 -- Run this in Supabase SQL Editor (https://supabase.com/dashboard -> SQL Editor)
--- Supports both Supabase REST (PostgREST) and GraphQL (pg_graphql + /api/graphql)
 
 create extension if not exists pgcrypto;
 
+-- 0. Clean up existing tables and functions for a fresh start
+drop table if exists public.automation_logs cascade;
+drop table if exists public.deals cascade;
+drop table if exists public.brands cascade;
+drop table if exists public.creators cascade;
+drop table if exists public.automation_configs cascade;
+
 -- 1. Creators Table
-create table if not exists public.creators (
+create table public.creators (
   id uuid primary key default gen_random_uuid(),
   name text not null,
   handle text not null default '',
@@ -23,10 +30,10 @@ create table if not exists public.creators (
   updated_at timestamptz not null default now()
 );
 
-create index if not exists idx_creators_created_at on public.creators (created_at desc);
+create index idx_creators_created_at on public.creators (created_at desc);
 
 -- 2. Brands Table
-create table if not exists public.brands (
+create table public.brands (
   id uuid primary key default gen_random_uuid(),
   name text not null,
   sector text not null default 'CONSUMER',
@@ -38,14 +45,14 @@ create table if not exists public.brands (
   updated_at timestamptz not null default now()
 );
 
-create unique index if not exists idx_brands_name_lower on public.brands (lower(name));
-create index if not exists idx_brands_created_at on public.brands (created_at desc);
+create unique index idx_brands_name_lower on public.brands (lower(name));
+create index idx_brands_created_at on public.brands (created_at desc);
 
--- 3. Deals Table
-create table if not exists public.deals (
+-- 3. Deals Table (strictly requires both a registered creator AND a registered brand)
+create table public.deals (
   id uuid primary key default gen_random_uuid(),
   creator_id uuid not null references public.creators(id) on delete cascade,
-  brand_id uuid references public.brands(id) on delete set null,
+  brand_id uuid not null references public.brands(id) on delete cascade,
   brand_name text not null,
   brand_sector text not null default 'COLLAB',
   campaign_title text not null default '',
@@ -64,17 +71,13 @@ create table if not exists public.deals (
   updated_at timestamptz not null default now()
 );
 
--- In case deals table already existed from an earlier run, ensure brand_id column exists:
-alter table public.deals
-  add column if not exists brand_id uuid references public.brands(id) on delete set null;
+create index idx_deals_creator_id on public.deals (creator_id);
+create index idx_deals_brand_id on public.deals (brand_id);
+create index idx_deals_status on public.deals (status);
+create index idx_deals_updated_at on public.deals (updated_at desc);
 
-create index if not exists idx_deals_creator_id on public.deals (creator_id);
-create index if not exists idx_deals_brand_id on public.deals (brand_id);
-create index if not exists idx_deals_status on public.deals (status);
-create index if not exists idx_deals_updated_at on public.deals (updated_at desc);
-
--- 3. Automation Config Table (Singleton)
-create table if not exists public.automation_configs (
+-- 4. Automation Config Table (Singleton)
+create table public.automation_configs (
   singleton_key text primary key default 'default',
   trigger_on_confirmed boolean not null default true,
   trigger_on_paid boolean not null default true,
@@ -90,8 +93,8 @@ create table if not exists public.automation_configs (
   updated_at timestamptz not null default now()
 );
 
--- 4. Automation Logs Table
-create table if not exists public.automation_logs (
+-- 5. Automation Logs Table (backend audit log for notification dispatches)
+create table public.automation_logs (
   id uuid primary key default gen_random_uuid(),
   deal_id text not null,
   creator_id text not null,
@@ -112,10 +115,10 @@ create table if not exists public.automation_logs (
   triggered_at timestamptz not null default now()
 );
 
-create index if not exists idx_automation_logs_triggered_at
+create index idx_automation_logs_triggered_at
   on public.automation_logs (triggered_at desc);
 
--- 5. Database Triggers: updated_at + Paid status immutability lock
+-- 6. Database Triggers: updated_at + Paid status immutability lock
 create or replace function public.set_updated_at()
 returns trigger
 language plpgsql
@@ -138,37 +141,32 @@ begin
 end;
 $$;
 
-drop trigger if exists trg_creators_updated_at on public.creators;
 create trigger trg_creators_updated_at
   before update on public.creators
   for each row execute function public.set_updated_at();
 
-drop trigger if exists trg_brands_updated_at on public.brands;
 create trigger trg_brands_updated_at
   before update on public.brands
   for each row execute function public.set_updated_at();
 
-drop trigger if exists trg_deals_updated_at on public.deals;
 create trigger trg_deals_updated_at
   before update on public.deals
   for each row execute function public.set_updated_at();
 
-drop trigger if exists trg_deals_paid_lock on public.deals;
 create trigger trg_deals_paid_lock
   before update on public.deals
   for each row execute function public.prevent_paid_deal_status_change();
 
-drop trigger if exists trg_automation_configs_updated_at on public.automation_configs;
 create trigger trg_automation_configs_updated_at
   before update on public.automation_configs
   for each row execute function public.set_updated_at();
 
--- 6. Seed default automation config row
+-- 7. Seed default automation config row
 insert into public.automation_configs (singleton_key)
 values ('default')
 on conflict (singleton_key) do nothing;
 
--- 7. Permissions & Row-Level Security Policies for PostgREST & pg_graphql
+-- 8. Permissions & Row-Level Security Policies
 grant usage on schema public to anon, authenticated, service_role;
 grant all on all tables in schema public to anon, authenticated, service_role;
 grant all on all sequences in schema public to anon, authenticated, service_role;
@@ -179,43 +177,31 @@ alter table public.deals enable row level security;
 alter table public.automation_configs enable row level security;
 alter table public.automation_logs enable row level security;
 
-drop policy if exists "Allow full access on creators" on public.creators;
 create policy "Allow full access on creators"
   on public.creators for all
   to anon, authenticated, service_role
-  using (true)
-  with check (true);
+  using (true) with check (true);
 
-drop policy if exists "Allow full access on brands" on public.brands;
 create policy "Allow full access on brands"
   on public.brands for all
   to anon, authenticated, service_role
-  using (true)
-  with check (true);
+  using (true) with check (true);
 
-drop policy if exists "Allow full access on deals" on public.deals;
 create policy "Allow full access on deals"
   on public.deals for all
   to anon, authenticated, service_role
-  using (true)
-  with check (true);
+  using (true) with check (true);
 
-drop policy if exists "Allow full access on automation_configs" on public.automation_configs;
 create policy "Allow full access on automation_configs"
   on public.automation_configs for all
   to anon, authenticated, service_role
-  using (true)
-  with check (true);
+  using (true) with check (true);
 
-drop policy if exists "Allow full access on automation_logs" on public.automation_logs;
 create policy "Allow full access on automation_logs"
   on public.automation_logs for all
   to anon, authenticated, service_role
-  using (true)
-  with check (true);
+  using (true) with check (true);
 
--- Optional: Enable pg_graphql introspection on public schema
 comment on schema public is '@graphql({"inflect_names": true})';
 
--- Reload PostgREST schema cache immediately
 notify pgrst, 'reload schema';

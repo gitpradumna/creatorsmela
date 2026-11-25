@@ -3,10 +3,10 @@
 import { useState } from "react";
 import {
   Building2,
+  CheckCircle2,
   Download,
   FileText,
   Globe,
-  Lock,
   Plus,
   Search,
   SlidersHorizontal,
@@ -15,7 +15,6 @@ import {
   UserPlus,
   Users,
 } from "lucide-react";
-import { DealStatusBadge } from "@/components/StatusBadge";
 import {
   formatFollowers,
   formatINR,
@@ -151,10 +150,11 @@ export function CreatorRosterView({
             type="button"
             onClick={onSeedData}
             disabled={isSeeding}
+            title="Clean database and generate fresh creators, brands, and deals"
             className="cm-pill-brand inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold transition-opacity hover:opacity-90 disabled:opacity-50"
           >
             <Sparkles className="h-3.5 w-3.5" />
-            <span>{isSeeding ? "Loading..." : "Sample Data"}</span>
+            <span>{isSeeding ? "Generating..." : "Generate Data"}</span>
           </button>
 
           <button
@@ -514,7 +514,7 @@ export function CreatorRosterView({
                     </div>
 
                     <div className="flex items-center gap-2.5 sm:justify-end">
-                      <div className="text-left sm:text-right">
+                      <div className="mr-1 text-left sm:min-w-[6.5rem] sm:text-right">
                         <p className="text-xs font-bold text-[var(--text)] cm-tabular">
                           {formatINR(creator.totalPipelineValue)}
                         </p>
@@ -527,16 +527,18 @@ export function CreatorRosterView({
                       <button
                         type="button"
                         onClick={() => onOpenAddDealForCreator(creator.id)}
-                        className="cm-btn-secondary inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-semibold"
+                        className="cm-btn-secondary inline-flex w-[116px] items-center justify-center gap-1 rounded-full px-3 py-1.5 text-xs font-semibold"
                       >
                         <Plus className="h-3 w-3 text-[var(--accent-text)]" />
                         Add Deal
                       </button>
 
+                      <span className="hidden sm:inline-block sm:w-7" aria-hidden="true" />
+
                       <button
                         type="button"
                         onClick={() => onDeleteCreator(creator.id)}
-                        className="rounded-full p-1.5 text-[var(--text-faint)] transition-colors hover:bg-rose-500/10 hover:text-rose-500"
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-full text-[var(--text-faint)] transition-colors hover:bg-rose-500/10 hover:text-rose-500"
                         title="Delete creator"
                         aria-label={`Delete ${creator.name}`}
                       >
@@ -566,12 +568,9 @@ export function CreatorRosterView({
                             className="flex flex-col justify-between gap-3 px-5 py-3 transition-colors hover:bg-[var(--surface-subtle)]/45 sm:flex-row sm:items-center"
                           >
                             <div className="min-w-0 flex-1">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <span className="text-sm font-semibold text-[var(--text)]">
-                                  {deal.brandName}
-                                </span>
-                                <DealStatusBadge status={deal.status} />
-                              </div>
+                              <p className="truncate text-sm font-semibold text-[var(--text)]">
+                                {deal.brandName}
+                              </p>
                               <p className="mt-0.5 text-xs text-[var(--text-muted)]">
                                 {deal.deliverables}
                                 {deal.dueDate
@@ -581,21 +580,26 @@ export function CreatorRosterView({
                             </div>
 
                             <div className="flex flex-wrap items-center gap-2.5 sm:justify-end">
-                              <span className="mr-1 text-sm font-bold text-[var(--text)] cm-tabular">
+                              <span className="mr-1 text-sm font-bold text-[var(--text)] cm-tabular sm:min-w-[6.5rem] sm:text-right">
                                 {formatINR(deal.dealValue)}
                               </span>
 
                               {deal.status === "Paid" ? (
                                 <span
-                                  title="Paid deals are locked and cannot change status"
-                                  className="inline-flex items-center gap-1 rounded-xl bg-[var(--surface-chip)] px-2.5 py-1 text-xs font-medium text-[var(--text-muted)]"
+                                  title="Paid deal status cannot be changed"
+                                  className="inline-flex w-[116px] cursor-default select-none items-center justify-center gap-1 rounded-full px-3 py-1 text-xs font-semibold"
+                                  style={{
+                                    backgroundColor: "var(--status-paid-soft-bg)",
+                                    color: "var(--status-paid-soft-text)",
+                                  }}
                                 >
-                                  <Lock className="h-3 w-3" />
-                                  <span>Locked</span>
+                                  <CheckCircle2 className="h-3 w-3" />
+                                  <span>Paid</span>
                                 </span>
                               ) : (
                                 <select
                                   aria-label={`Status for ${deal.brandName}`}
+                                  title="Current status (select to update)"
                                   value={deal.status}
                                   disabled={isBusy}
                                   onChange={(e) =>
@@ -604,18 +608,43 @@ export function CreatorRosterView({
                                       e.target.value as DealStatus
                                     )
                                   }
-                                  className="cm-input rounded-xl px-2.5 py-1 text-xs font-medium disabled:opacity-50"
+                                  className="w-[116px] cursor-pointer rounded-full border border-transparent px-3 py-1 text-xs font-semibold outline-none transition-opacity hover:opacity-90 focus:ring-2 focus:ring-[var(--accent)] disabled:opacity-50"
+                                  style={{
+                                    backgroundColor:
+                                      deal.status === "Confirmed"
+                                        ? "var(--status-confirmed-bg)"
+                                        : "var(--status-pending-bg)",
+                                    color:
+                                      deal.status === "Confirmed"
+                                        ? "var(--status-confirmed-text)"
+                                        : "var(--status-pending-text)",
+                                  }}
                                 >
-                                  <option value="Pending">Pending</option>
-                                  <option value="Confirmed">Confirmed</option>
-                                  <option value="Paid">Paid</option>
+                                  <option
+                                    value="Pending"
+                                    className="bg-[var(--surface)] text-[var(--text)]"
+                                  >
+                                    Pending
+                                  </option>
+                                  <option
+                                    value="Confirmed"
+                                    className="bg-[var(--surface)] text-[var(--text)]"
+                                  >
+                                    Confirmed
+                                  </option>
+                                  <option
+                                    value="Paid"
+                                    className="bg-[var(--surface)] text-[var(--text)]"
+                                  >
+                                    Paid
+                                  </option>
                                 </select>
                               )}
 
                               <button
                                 type="button"
                                 onClick={() => onOpenDealBrief(deal, creator)}
-                                className="rounded-lg p-1.5 text-[var(--text-faint)] transition-colors hover:bg-[var(--surface-chip)] hover:text-[var(--text)]"
+                                className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-[var(--text-faint)] transition-colors hover:bg-[var(--surface-chip)] hover:text-[var(--text)]"
                                 title="View Payout Sheet"
                                 aria-label="View Payout Sheet"
                               >
@@ -626,7 +655,7 @@ export function CreatorRosterView({
                                 type="button"
                                 disabled={isBusy}
                                 onClick={() => onDeleteDeal(deal.id)}
-                                className="rounded-lg p-1.5 text-[var(--text-faint)] transition-colors hover:bg-rose-500/10 hover:text-rose-500"
+                                className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-[var(--text-faint)] transition-colors hover:bg-rose-500/10 hover:text-rose-500"
                                 title="Delete deal"
                                 aria-label={`Delete ${deal.brandName} deal`}
                               >

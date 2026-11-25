@@ -82,6 +82,12 @@ export interface AutomationConfigDTO {
   customWebhookUrl: string;
   managerEmail: string;
   useLoopbackTestSink: boolean;
+  envConfigured?: {
+    slack: boolean;
+    sheets: boolean;
+    email: boolean;
+    webhook: boolean;
+  };
   updatedAt: string;
 }
 

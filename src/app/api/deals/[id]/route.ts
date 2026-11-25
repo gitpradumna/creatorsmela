@@ -27,7 +27,7 @@ export async function PATCH(
       }
       if (existing.status === "Paid" && body.status !== "Paid") {
         return NextResponse.json(
-          { error: "Paid deals are locked and their status cannot be changed." },
+          { error: "Deals marked as Paid cannot change status." },
           { status: 409 }
         );
       }
@@ -83,12 +83,18 @@ export async function PATCH(
       automationsTriggered,
     });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to update deal" },
-      { status: 500 }
-    );
+    const msg = error instanceof Error ? error.message : "Failed to update deal";
+    const statusCode =
+      msg.includes("cannot change status") ||
+      msg.includes("cannot be changed") ||
+      msg.includes("locked")
+        ? 409
+        : 500;
+    return NextResponse.json({ error: msg }, { status: statusCode });
   }
 }
+
+export { PATCH as PUT };
 
 export async function DELETE(
   _req: NextRequest,

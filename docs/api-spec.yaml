@@ -1,0 +1,299 @@
+openapi: 3.1.0
+info:
+  title: CreatorsMela Collab Tracker API
+  version: 1.0.0
+  description: >
+    REST and GraphQL APIs backed by Supabase PostgreSQL for tracking creators,
+    registered brands, brand collaboration deals, immutable Paid locks, and
+    event-driven workflow automations.
+
+servers:
+  - url: http://localhost:3000
+    description: Local Next.js Development Server
+
+paths:
+  /api/health:
+    get:
+      summary: Check Supabase PostgreSQL connectivity and row counts
+      responses:
+        "200":
+          description: Healthy database connection
+          content:
+            application/json:
+              example:
+                ok: true
+                storageMode: supabase-postgres
+                creatorsCount: 6
+                dealsCount: 11
+                timestamp: "2026-11-25T04:12:00.000Z"
+
+  /api/dashboard:
+    get:
+      summary: Fetch aggregated creators, registered brands, deals, metrics, and automation logs
+      responses:
+        "200":
+          description: Full dashboard payload
+          content:
+            application/json:
+              example:
+                storageMode: supabase-postgres
+                metrics:
+                  totalPipelineValue: 3680000
+                  pendingValue: 1035000
+                  confirmedValue: 1165000
+                  paidValue: 1480000
+                  totalCreators: 6
+                  totalDeals: 11
+                  conversionRate: 73
+                  automationsFiredCount: 8
+
+  /api/creators:
+    get:
+      summary: List all registered creators
+      responses:
+        "200":
+          description: Array of creators
+          content:
+            application/json:
+              example:
+                creators:
+                  - id: "7b7c65a4-47f4-4db3-b91e-1d8a55d7d810"
+                    name: Hemant Show
+                    handle: "@hemantshoww"
+                    platform: Multi-platform
+                    niche: Comedy & Sketches
+                    followerCount: 3000000
+                    managerName: Ananya Kapoor
+                    tier: Exclusive
+    post:
+      summary: Register a new creator
+      requestBody:
+        required: true
+        content:
+          application/json:
+            example:
+              name: Tech Burner
+              handle: "@techburner"
+              platform: YouTube
+              niche: Tech & Gadgets
+              followerCount: 12000000
+              managerName: Rohan Verma
+      responses:
+        "201":
+          description: Creator registered
+          content:
+            application/json:
+              example:
+                creator:
+                  id: "2940f970-7e41-4c28-9ea1-2a3d9f1a0981"
+                  name: Tech Burner
+                  handle: "@techburner"
+                  niche: Tech & Gadgets
+                  followerCount: 12000000
+
+  /api/creators/{id}:
+    patch:
+      summary: Update a creator
+      responses:
+        "200":
+          description: Updated creator
+    delete:
+      summary: Delete a creator and cascade their deals
+      responses:
+        "200":
+          description: Deleted confirmation
+          content:
+            application/json:
+              example:
+                deleted: true
+
+  /api/brands:
+    get:
+      summary: List all registered brands
+      responses:
+        "200":
+          description: Array of registered brands
+          content:
+            application/json:
+              example:
+                brands:
+                  - id: "5c14f0df-2c44-4f10-96aa-3b88823c2d91"
+                    name: Lenskart
+                    sector: EYEWEAR
+                    contactName: Aarav Mehta
+                    contactEmail: partnerships@lenskart.com
+                    website: https://www.lenskart.com
+    post:
+      summary: Register a brand
+      requestBody:
+        required: true
+        content:
+          application/json:
+            example:
+              name: District by Zomato
+              sector: LIVE EVENTS
+              contactName: Zoya Khan
+              contactEmail: partners@district.in
+              website: https://www.district.in
+      responses:
+        "201":
+          description: Brand registered
+
+  /api/brands/{id}:
+    delete:
+      summary: Delete a registered brand
+      responses:
+        "200":
+          description: Deleted confirmation
+
+  /api/deals:
+    get:
+      summary: List deals with optional status, creatorId, niche, and search filters
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [Pending, Confirmed, Paid]
+        - name: creatorId
+          in: query
+          schema:
+            type: string
+        - name: search
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Matching deals
+          content:
+            application/json:
+              example:
+                deals:
+                  - id: "d1e3b4a0-8f22-41af-98d4-99f847021c01"
+                    creatorId: "7b7c65a4-47f4-4db3-b91e-1d8a55d7d810"
+                    brandName: Lenskart
+                    dealValue: 480000
+                    agencyFeePct: 15
+                    status: Paid
+                    deliverables: 1 YT Integration + 2 IG Reels
+    post:
+      summary: Create a brand collaboration deal (auto-fires automations if Confirmed or Paid)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            example:
+              creatorId: "7b7c65a4-47f4-4db3-b91e-1d8a55d7d810"
+              brandName: Lenskart
+              dealValue: 480000
+              status: Confirmed
+              deliverables: 1 YT Integration + 2 IG Reels
+      responses:
+        "201":
+          description: Deal created with triggered automations
+          content:
+            application/json:
+              example:
+                deal:
+                  id: "d1e3b4a0-8f22-41af-98d4-99f847021c01"
+                  brandName: Lenskart
+                  status: Confirmed
+                  dealValue: 480000
+                automationsTriggered:
+                  - channel: slack
+                    mode: simulated
+                    httpStatus: 200
+                  - channel: sheets
+                    mode: simulated
+                    httpStatus: 200
+                  - channel: webhook
+                    mode: loopback
+                    httpStatus: 200
+
+  /api/deals/{id}:
+    patch:
+      summary: Update a deal status; fires automations on transition to Confirmed or Paid; blocks changing Paid deals (409)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            example:
+              status: Paid
+      responses:
+        "200":
+          description: Deal updated and automations triggered
+          content:
+            application/json:
+              example:
+                deal:
+                  id: "d1e3b4a0-8f22-41af-98d4-99f847021c01"
+                  status: Paid
+                previousStatus: Confirmed
+                automationsTriggered:
+                  - channel: slack
+                    httpStatus: 200
+                    summary: "Slack Block Kit alert formatted for #deals-ops"
+        "409":
+          description: Attempted to modify status of an already Paid deal
+          content:
+            application/json:
+              example:
+                error: Deals marked as Paid cannot change status.
+    delete:
+      summary: Delete a deal
+      responses:
+        "200":
+          description: Deleted confirmation
+
+  /api/automations:
+    get:
+      summary: Get automation configuration and recent execution logs
+    put:
+      summary: Update automation channel toggles and webhook URLs
+
+  /api/automations/test:
+    post:
+      summary: Fire a manual test run across enabled automation channels
+
+  /api/automations/webhook-sink:
+    post:
+      summary: Built-in loopback receiver verifying X-CreatorsMela-Signature HMAC-SHA256
+
+  /api/seed:
+    post:
+      summary: Seed CreatorsMela sample creators, brands, deals, and logs
+
+  /api/graphql:
+    get:
+      summary: Inspect GraphQL SDL and sample queries
+    post:
+      summary: Execute GraphQL queries and mutations against Supabase PostgreSQL
+      requestBody:
+        required: true
+        content:
+          application/json:
+            example:
+              query: |
+                query PaidDeals {
+                  deals(status: "Paid") {
+                    id
+                    brandName
+                    creatorName
+                    dealValue
+                    status
+                  }
+                }
+      responses:
+        "200":
+          description: GraphQL execution result
+          content:
+            application/json:
+              example:
+                data:
+                  deals:
+                    - id: "d1e3b4a0-8f22-41af-98d4-99f847021c01"
+                      brandName: Lenskart
+                      creatorName: Hemant Show
+                      dealValue: 480000
+                      status: Paid

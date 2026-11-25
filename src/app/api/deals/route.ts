@@ -87,9 +87,8 @@ export async function POST(req: NextRequest) {
       { status: 201 }
     );
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to create deal" },
-      { status: 500 }
-    );
+    const msg = error instanceof Error ? error.message : "Failed to create deal";
+    const statusCode = msg.includes("not registered") ? 400 : 500;
+    return NextResponse.json({ error: msg }, { status: statusCode });
   }
 }

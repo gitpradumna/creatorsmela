@@ -6,8 +6,7 @@ import {
   ArrowRight,
   Building2,
   CheckCircle2,
-  Code2,
-  Database,
+  FileText,
   Lock,
   LogIn,
   Moon,
@@ -49,8 +48,8 @@ export function LandingHomepage() {
             <a href="#workflow" className="transition-colors hover:text-[var(--text)]">
               Workflow
             </a>
-            <a href="#architecture" className="transition-colors hover:text-[var(--text)]">
-              REST &amp; GraphQL
+            <a href="#automations" className="transition-colors hover:text-[var(--text)]">
+              Automations
             </a>
           </nav>
 
@@ -101,7 +100,7 @@ export function LandingHomepage() {
             <p className="max-w-xl text-sm leading-relaxed text-[var(--text-muted)] sm:text-base">
               Built for CreatorsMela talent managers to track brand collaborations
               from Pending to Confirmed and Paid — with automatic Slack, Google
-              Sheets, and Webhook workflows backed by Supabase PostgreSQL.
+              Sheets, Email, and Webhook notifications.
             </p>
 
             <div className="flex flex-wrap items-center gap-3">
@@ -115,13 +114,12 @@ export function LandingHomepage() {
                 <ArrowRight className="h-4 w-4" />
               </button>
 
-              <Link
-                href="/dashboard?tab=api"
+              <a
+                href="#features"
                 className="cm-btn-secondary inline-flex items-center gap-2 rounded-full px-5 py-3 text-sm font-semibold"
               >
-                <Code2 className="h-4 w-4 text-[var(--accent-text)]" />
-                <span>REST &amp; GraphQL API</span>
-              </Link>
+                <span>Explore Features</span>
+              </a>
             </div>
 
             <div className="flex flex-wrap items-center gap-4 pt-2 text-xs text-[var(--text-muted)]">
@@ -130,11 +128,11 @@ export function LandingHomepage() {
                   className="h-3.5 w-3.5"
                   style={{ color: "var(--status-paid-soft-text)" }}
                 />
-                No sign-up needed for demo
+                One-click manager demo access
               </span>
               <span className="inline-flex items-center gap-1.5">
-                <Database className="h-3.5 w-3.5 text-[var(--accent-text)]" />
-                Supabase PostgreSQL
+                <Lock className="h-3.5 w-3.5 text-[var(--accent-text)]" />
+                Immutable Paid status
               </span>
               <span className="inline-flex items-center gap-1.5">
                 <Zap className="h-3.5 w-3.5 text-[var(--accent-text)]" />
@@ -275,16 +273,16 @@ export function LandingHomepage() {
                 <Lock className="h-4 w-4" />
               </div>
               <h3 className="text-sm font-bold text-[var(--text)]">
-                Immutable Paid Lock
+                Immutable Paid Status
               </h3>
               <p className="text-xs leading-relaxed text-[var(--text-muted)]">
                 Marking a deal as Paid shows a confirmation popup first, then
-                locks its status across the UI, API, and PostgreSQL trigger so
+                keeps its Paid status final across the UI and backend API so
                 settled payouts stay audit-safe.
               </p>
             </div>
 
-            <div className="cm-card space-y-2.5 rounded-2xl p-5">
+            <div id="automations" className="cm-card space-y-2.5 rounded-2xl p-5">
               <div className="cm-pill-brand flex h-9 w-9 items-center justify-center rounded-xl">
                 <Zap className="h-4 w-4" />
               </div>
@@ -292,41 +290,41 @@ export function LandingHomepage() {
                 Automated Deal Actions
               </h3>
               <p className="text-xs leading-relaxed text-[var(--text-muted)]">
-                Moving a deal to Confirmed or Paid triggers Slack Block Kit alerts,
-                Google Sheets row appends, Email, and HMAC-SHA256 webhooks with an
-                inspectable execution log.
+                Moving a deal to Confirmed or Paid triggers Slack alerts, Google
+                Sheets row appends, Email notifications, and signed webhooks with
+                a live activity feed.
               </p>
             </div>
           </div>
         </section>
 
-        {/* Workflow & Tech Architecture */}
+        {/* Workflow Cards */}
         <section id="workflow" className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div className="cm-card space-y-3 rounded-2xl p-5">
             <div className="flex items-center gap-2">
               <Building2 className="h-4 w-4 text-[var(--accent-text)]" />
               <h3 className="text-sm font-bold text-[var(--text)]">
-                Deal Lifecycle &amp; Payout Breakdown
+                Kanban Pipeline &amp; Filtering
               </h3>
             </div>
             <p className="text-xs leading-relaxed text-[var(--text-muted)]">
-              Track every deal across Pending, Confirmed, and Paid on either the
-              Creator Roster or Kanban Pipeline. Generate printable Deal Payout
-              Sheets with automatic agency fee and 10% TDS u/s 194J calculations.
+              Track every collaboration across Pending, Confirmed, and Paid.
+              Filter by status, creator, or keyword search and export filtered
+              deals to CSV anytime.
             </p>
           </div>
 
-          <div id="architecture" className="cm-card space-y-3 rounded-2xl p-5">
+          <div className="cm-card space-y-3 rounded-2xl p-5">
             <div className="flex items-center gap-2">
-              <Code2 className="h-4 w-4 text-[var(--accent-text)]" />
+              <FileText className="h-4 w-4 text-[var(--accent-text)]" />
               <h3 className="text-sm font-bold text-[var(--text)]">
-                Dual REST + GraphQL over Supabase Postgres
+                Instant Creator Payout Sheets
               </h3>
             </div>
             <p className="text-xs leading-relaxed text-[var(--text-muted)]">
-              Switch live dashboard traffic between REST endpoints and GraphQL
-              (`/api/graphql` + Supabase `pg_graphql`) anytime, or run custom
-              queries directly in the built-in API Explorer.
+              Generate printable Deal Payout Briefs for any collaboration with
+              automatic agency commission splits, net creator payout, and 10%
+              TDS u/s 194J estimates.
             </p>
           </div>
         </section>
@@ -335,7 +333,7 @@ export function LandingHomepage() {
         <section className="cm-card flex flex-col items-start justify-between gap-4 rounded-2xl p-6 sm:flex-row sm:items-center">
           <div>
             <h2 className="text-base font-bold text-[var(--text)]">
-              Ready to explore the workspace?
+              Ready to explore the manager workspace?
             </h2>
             <p className="mt-0.5 text-xs text-[var(--text-muted)]">
               Jump straight into the interactive dashboard with one click.

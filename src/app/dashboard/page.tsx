@@ -5,13 +5,17 @@ import { useSearchParams } from "next/navigation";
 import { CollabDashboard } from "@/components/CollabDashboard";
 import type { ActiveTab } from "@/components/Navbar";
 
-const VALID_TABS: ActiveTab[] = ["roster", "pipeline", "automations", "api"];
+const VALID_TABS: ActiveTab[] = ["roster", "pipeline", "notifications"];
 
 function DashboardWithParams() {
   const params = useSearchParams();
-  const rawTab = params.get("tab") as ActiveTab | null;
+  const rawParam = params.get("tab");
+  const normalizedTab =
+    rawParam === "automations" ? "notifications" : (rawParam as ActiveTab | null);
   const initialTab: ActiveTab =
-    rawTab && VALID_TABS.includes(rawTab) ? rawTab : "roster";
+    normalizedTab && VALID_TABS.includes(normalizedTab)
+      ? normalizedTab
+      : "roster";
 
   return <CollabDashboard initialTab={initialTab} />;
 }
